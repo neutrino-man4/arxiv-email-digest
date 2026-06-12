@@ -3,8 +3,6 @@
 categories:
   - hep-ph
   - hep-ex
-  - cs.LG
-  - quant-ph
 
 # Papers fetched from arXiv per category before LLM selection
 fetch_n: 50
@@ -17,12 +15,9 @@ user:
 
 # Describe your research interests — used by the LLM to select and rank papers.
 researcher_profile: |
-  The reader is a particle physicist and ML researcher working on
-  Lorentz-equivariant neural networks, jet tagging, quantum machine learning
-  (continuous-variable QML, qumode architectures), anomaly detection at CMS,
-  simulation-based inference, and information geometry (Fisher information,
-  natural gradient). Prioritise papers directly relevant to these topics.
-
+  I'm a particle physicist and ML researcher working on
+  classical and quantum machine learning. I am interested in anomaly detection at the LHC, jet tagging with novel ML architectures, and machine learning that exploits jet substructure. I am interested also in the applications of hypergraphs or hyper GNNs to LHC physics, be it for jet tagging or other applications. I am also looking into Lorentz equivariant architectures for quantum circuits, be it qubit or continuous-variable qumode systems. Prioritise papers directly relevant to these topics. I am less interested in more general ML papers without a clear connection to particle physics, or papers on quantum computing that don't have a clear application to ML or particle physics. Also prioritize papers from any of the following authors: Benjamin Nachman, David Shih, Jesse Thaler, Kyle Cranmer, Gregor Kasieczka, Michael Spannowsky, and any papers from the ML4Jets community. Ignore any paper on which I (Aritra Bal) am a co-author, since I will already be aware of it.
+ 
 # Controls how the digest email is written. Be as specific as you like about
 # tone, structure, length of summaries, what to emphasise, etc.
 output_instructions: |
@@ -31,10 +26,10 @@ output_instructions: |
   Start with a short greeting using my name.
   Across all categories combined, identify the 2 most relevant papers and open
   the email with a "Top picks" section: for each, write 3-4 sentences explaining
-  what is novel and exactly why it matters to my research interests.
-  Then list the remaining papers per category, ranked from most to least relevant,
+  what is novel and exactly why it matters to my research interests. If it is from any of my starred authors, emphasise that connection.
+  Then list the remaining papers per category, ranked from most to least relevant (based on my profile prompt),
   with just the title and arXiv link. No summaries needed for these.
-  Close with a one-line sign-off.
+  Close with a one-line informal sign-off.
 
 llm:
   # OpenAI-compatible API base URL
