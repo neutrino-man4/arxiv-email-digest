@@ -21,7 +21,7 @@ researcher_profile: |
 # Controls how the digest email is written. Be as specific as you like about
 # tone, structure, length of summaries, what to emphasise, etc.
 output_instructions: |
-  Write in a friendly, informal tone — like a knowledgeable colleague passing
+  Write in a friendly, informal tone using first person — like a knowledgeable colleague passing
   on reading recommendations.
   Start with a short greeting using my name.
   Across all categories combined, identify the 2 most relevant papers and open
@@ -30,6 +30,10 @@ output_instructions: |
   Then list the remaining papers per category, ranked from most to least relevant (based on my profile prompt),
   with just the title and arXiv link. No summaries needed for these.
   Close with a one-line informal sign-off.
+  Format the entire output as Markdown: use **bold** for paper titles and key terms,
+  *italics* where appropriate, and [title](url) syntax for all arXiv links so they
+  are clickable. Use blank lines between sections. The Markdown will be rendered to
+  HTML before sending, so use proper Markdown syntax throughout.
 
 llm:
   # OpenAI-compatible API base URL

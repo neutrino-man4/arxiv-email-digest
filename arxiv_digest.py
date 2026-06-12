@@ -18,6 +18,7 @@ from email.mime.text import MIMEText
 from pathlib import Path
 
 import httpx
+import markdown as md
 import yaml
 from openai import OpenAI
 
@@ -214,7 +215,8 @@ def send_email(subject: str, body: str) -> None:
     address = os.environ["GMAIL_ADDRESS"]
     password = os.environ["GMAIL_APP_PASSWORD"]
 
-    msg = MIMEText(body, "plain", "utf-8")
+    html = md.markdown(body, extensions=["extra"])
+    msg = MIMEText(html, "html", "utf-8")
     msg["Subject"] = subject
     msg["From"] = address
     msg["To"] = address
