@@ -103,7 +103,7 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
     Raises on parse failure or wrong type. Silently drops out-of-range indices.
     """
     numbered = "\n\n".join(
-        f"[{i}] {p['title']}\n{p['abstract'][:400]}"
+        f"[{i}] {p['title']}\n{p['abstract']}"
         for i, p in enumerate(papers)
     )
 
@@ -164,7 +164,7 @@ def format_digest(results: dict[str, list[dict]], name: str) -> str:
             block.append(
                 f"  [{rank}] {paper['title']}\n"
                 f"      URL: {paper['id']}\n"
-                f"      Abstract: {paper['abstract'][:600]}"
+                f"      Abstract: {paper['abstract']}"
             )
         sections.append("\n".join(block))
 
