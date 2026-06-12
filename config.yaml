@@ -1,0 +1,29 @@
+# arXiv categories to monitor
+# Full list: https://arxiv.org/category_taxonomy
+categories:
+  - hep-ph
+  - hep-ex
+  - cs.LG
+  - quant-ph
+
+# Papers fetched from arXiv per category before LLM selection
+fetch_n: 50
+
+# Papers selected by the LLM and included in the email per category
+select_n: 10
+
+# Describe your research interests — this is passed verbatim to the LLM
+# to guide which papers get selected.
+researcher_profile: |
+  The reader is a particle physicist and ML researcher working on
+  Lorentz-equivariant neural networks, jet tagging, quantum machine learning
+  (continuous-variable QML, qumode architectures), anomaly detection at CMS,
+  simulation-based inference, and information geometry (Fisher information,
+  natural gradient). Prioritise papers directly relevant to these topics.
+
+llm:
+  # OpenAI-compatible API base URL
+  base_url: https://ki-toolbox.scc.kit.edu/api
+
+email:
+  subject: "[arXiv] Daily Digest"
