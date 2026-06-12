@@ -135,10 +135,10 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.0,
-        max_tokens=256,
+        max_tokens=2048,
     )
 
-    raw = completion.choices[0].message.content.strip()
+    raw = (completion.choices[0].message.content or "").strip()
 
     try:
         indices = json.loads(raw)
@@ -199,10 +199,10 @@ def format_digest(results: dict[str, list[dict]], name: str) -> str:
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.3,
-        max_tokens=2000,
+        max_tokens=8000,
     )
 
-    return completion.choices[0].message.content.strip()
+    return (completion.choices[0].message.content or "").strip()
 
 
 def send_email(subject: str, body: str) -> None:
