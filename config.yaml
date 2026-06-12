@@ -12,14 +12,29 @@ fetch_n: 50
 # Papers selected by the LLM and included in the email per category
 select_n: 10
 
-# Describe your research interests — this is passed verbatim to the LLM
-# to guide which papers get selected.
+user:
+  name: Aritra
+
+# Describe your research interests — used by the LLM to select and rank papers.
 researcher_profile: |
   The reader is a particle physicist and ML researcher working on
   Lorentz-equivariant neural networks, jet tagging, quantum machine learning
   (continuous-variable QML, qumode architectures), anomaly detection at CMS,
   simulation-based inference, and information geometry (Fisher information,
   natural gradient). Prioritise papers directly relevant to these topics.
+
+# Controls how the digest email is written. Be as specific as you like about
+# tone, structure, length of summaries, what to emphasise, etc.
+output_instructions: |
+  Write in a friendly, informal tone — like a knowledgeable colleague passing
+  on reading recommendations.
+  Start with a short greeting using my name.
+  Across all categories combined, identify the 2 most relevant papers and open
+  the email with a "Top picks" section: for each, write 3-4 sentences explaining
+  what is novel and exactly why it matters to my research interests.
+  Then list the remaining papers per category, ranked from most to least relevant,
+  with just the title and arXiv link. No summaries needed for these.
+  Close with a one-line sign-off.
 
 llm:
   # OpenAI-compatible API base URL

@@ -1,9 +1,10 @@
 """
 arXiv Daily Digest Bot
 
-Fetches recent papers from specified arXiv categories, selects the most
-relevant ones per category via the KIT LLM API, and delivers a digest by email.
-All user-facing settings are read from config.yaml.
+Fetches recent papers from specified arXiv categories, selects and ranks the
+most relevant ones per category via the KIT LLM API, then uses a second LLM
+call to craft a personalised digest email. All user-facing settings are read
+from config.yaml.
 
 Author: Aritra Bal (ETP)
 Date: 2026-06-12
@@ -31,6 +32,8 @@ CATEGORIES: list[str] = _cfg["categories"]
 FETCH_N: int = _cfg["fetch_n"]
 SELECT_N: int = _cfg["select_n"]
 RESEARCHER_PROFILE: str = _cfg["researcher_profile"].strip()
+OUTPUT_INSTRUCTIONS: str = _cfg["output_instructions"].strip()
+USER_NAME: str = _cfg["user"]["name"]
 LLM_BASE_URL: str = _cfg["llm"]["base_url"]
 EMAIL_SUBJECT: str = _cfg["email"]["subject"]
 
@@ -93,11 +96,11 @@ def fetch_papers(category: str, n: int) -> list[dict]:
 
 
 def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[dict]:
-    """Use the LLM to select the n most relevant papers for the researcher.
+    """Use the LLM to select and rank the n most relevant papers.
 
     Sends a numbered list of titles + truncated abstracts and expects a JSON
-    array of integer indices back. Raises on parse failure or wrong type.
-    Silently drops out-of-range indices.
+    array of integer indices back, ordered from most to least relevant.
+    Raises on parse failure or wrong type. Silently drops out-of-range indices.
     """
     numbered = "\n\n".join(
         f"[{i}] {p['title']}\n{p['abstract'][:400]}"
@@ -107,14 +110,14 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
     system_prompt = (
         f"{RESEARCHER_PROFILE}\n\n"
         "You are selecting papers for a physics/ML researcher's daily digest. "
-        f"Return ONLY a JSON array of exactly {n} integer indices (0-based) "
-        "identifying the most relevant papers. No explanation, no markdown, "
-        f"just the raw JSON array, e.g. [3, 7, 12, ...]."
+        f"Return ONLY a JSON array of exactly {n} integer indices (0-based), "
+        "ordered from most to least relevant to the researcher's interests. "
+        "No explanation, no markdown — just the raw JSON array, e.g. [3, 7, 12, ...]."
     )
     user_prompt = (
         f"Category: {category}\n\n"
         f"Papers:\n{numbered}\n\n"
-        f"Return the {n} best indices as a JSON array."
+        f"Return the {n} best indices as a JSON array, ranked most to least relevant."
     )
 
     client = _llm_client()
@@ -148,17 +151,52 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
     return [papers[i] for i in valid]
 
 
-def build_email_body(results: dict[str, list[dict]]) -> str:
-    """Format all selected papers into a plain-text email body."""
+def format_digest(results: dict[str, list[dict]], name: str) -> str:
+    """Use the LLM to write the full personalised digest email body.
+
+    Papers are presented with their full abstracts so the model can write
+    meaningful summaries for the top picks.
+    """
     sections: list[str] = []
     for category, papers in results.items():
-        lines = [f"=== {category} ===", ""]
-        for idx, paper in enumerate(papers, start=1):
-            lines.append(f"{idx}. {paper['title']}")
-            lines.append(f"   {paper['id']}")
-            lines.append("")
-        sections.append("\n".join(lines))
-    return "\n".join(sections)
+        block = [f"Category: {category}"]
+        for rank, paper in enumerate(papers, start=1):
+            block.append(
+                f"  [{rank}] {paper['title']}\n"
+                f"      URL: {paper['id']}\n"
+                f"      Abstract: {paper['abstract'][:600]}"
+            )
+        sections.append("\n".join(block))
+
+    papers_text = "\n\n".join(sections)
+
+    system_prompt = (
+        f"{RESEARCHER_PROFILE}\n\n"
+        "You are writing a personalised daily arXiv digest email for this researcher.\n\n"
+        f"Formatting instructions:\n{OUTPUT_INSTRUCTIONS}"
+    )
+    user_prompt = (
+        f"Recipient name: {name}\n\n"
+        "Here are today's selected papers, already ranked from most to least "
+        "relevant within each category:\n\n"
+        f"{papers_text}\n\n"
+        "Write the digest email body now."
+    )
+
+    client = _llm_client()
+    model = os.environ["KIT_LLM_MODEL"]
+
+    completion = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        temperature=0.3,
+        max_tokens=2000,
+    )
+
+    return completion.choices[0].message.content.strip()
 
 
 def send_email(subject: str, body: str) -> None:
@@ -181,14 +219,14 @@ def send_email(subject: str, body: str) -> None:
 
 
 def main() -> None:
-    """Entry point: fetch, select, and email the daily arXiv digest."""
+    """Entry point: fetch, select, format, and email the daily arXiv digest."""
     results: dict[str, list[dict]] = {}
     for category in CATEGORIES:
         papers = fetch_papers(category, FETCH_N)
         selected = select_best(papers, category)
         results[category] = selected
 
-    body = build_email_body(results)
+    body = format_digest(results, USER_NAME)
     send_email(EMAIL_SUBJECT, body)
     print("Digest sent successfully.")
 
