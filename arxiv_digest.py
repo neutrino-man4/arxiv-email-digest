@@ -12,6 +12,7 @@ Date: 2026-06-12
 
 import json
 import os
+import re
 import smtplib
 import xml.etree.ElementTree as ET
 from email.mime.text import MIMEText
@@ -142,11 +143,19 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
 
     raw = (completion.choices[0].message.content or "").strip()
 
+    # Extract the first JSON array from the response, tolerating markdown code
+    # fences or leading/trailing explanation text.
+    match = re.search(r"\[[\s\S]*?\]", raw)
+    if not match:
+        raise ValueError(
+            f"No JSON array found in LLM response for category '{category}': {raw!r}"
+        )
+
     try:
-        indices = json.loads(raw)
+        indices = json.loads(match.group())
     except json.JSONDecodeError as exc:
         raise ValueError(
-            f"LLM returned non-JSON for category '{category}': {raw!r}"
+            f"LLM returned unparseable JSON for category '{category}': {raw!r}"
         ) from exc
 
     if not isinstance(indices, list):
