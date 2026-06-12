@@ -60,7 +60,7 @@ def _llm_client() -> OpenAI:
 def fetch_papers(category: str, n: int) -> list[dict]:
     """Fetch the n most recently submitted papers from an arXiv category.
 
-    Returns a list of dicts with keys: ``title``, ``abstract``, ``id``.
+    Returns a list of dicts with keys: ``title``, ``authors``, ``abstract``, ``id``.
     Raises ``httpx.HTTPStatusError`` on non-200 responses.
     Silently skips malformed XML entries.
     """
@@ -82,9 +82,14 @@ def fetch_papers(category: str, n: int) -> list[dict]:
             id_el = entry.find(f"{{{ARXIV_NS}}}id")
             if title_el is None or abstract_el is None or id_el is None:
                 continue
+            authors = [
+                a.findtext(f"{{{ARXIV_NS}}}name", "").strip()
+                for a in entry.findall(f"{{{ARXIV_NS}}}author")
+            ]
             papers.append(
                 {
                     "title": title_el.text.strip(),
+                    "authors": authors,
                     "abstract": abstract_el.text.strip(),
                     "id": id_el.text.strip(),
                 }
@@ -103,7 +108,7 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
     Raises on parse failure or wrong type. Silently drops out-of-range indices.
     """
     numbered = "\n\n".join(
-        f"[{i}] {p['title']}\n{p['abstract']}"
+        f"[{i}] {p['title']}\nAuthors: {', '.join(p['authors'])}\n{p['abstract']}"
         for i, p in enumerate(papers)
     )
 
@@ -163,6 +168,7 @@ def format_digest(results: dict[str, list[dict]], name: str) -> str:
         for rank, paper in enumerate(papers, start=1):
             block.append(
                 f"  [{rank}] {paper['title']}\n"
+                f"      Authors: {', '.join(paper['authors'])}\n"
                 f"      URL: {paper['id']}\n"
                 f"      Abstract: {paper['abstract']}"
             )
