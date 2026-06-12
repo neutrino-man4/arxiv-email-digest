@@ -38,6 +38,7 @@ output_instructions: |
 llm:
   # OpenAI-compatible API base URL
   base_url: https://ki-toolbox.scc.kit.edu/api
+  model: kit.qwen3.5-397b-A17b
 
 email:
   subject: "[arXiv] Daily Digest"

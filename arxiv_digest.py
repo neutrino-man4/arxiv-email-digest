@@ -37,6 +37,7 @@ RESEARCHER_PROFILE: str = _cfg["researcher_profile"].strip()
 OUTPUT_INSTRUCTIONS: str = _cfg["output_instructions"].strip()
 USER_NAME: str = _cfg["user"]["name"]
 LLM_BASE_URL: str = _cfg["llm"]["base_url"]
+LLM_MODEL: str = _cfg["llm"]["model"]
 EMAIL_SUBJECT: str = _cfg["email"]["subject"]
 EMAIL_TO: str = _cfg["email"]["to"]
 
@@ -131,7 +132,7 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
     )
 
     client = _llm_client()
-    model = os.environ["KIT_LLM_MODEL"]
+    model = LLM_MODEL
 
     completion = client.chat.completions.create(
         model=model,
@@ -203,7 +204,7 @@ def format_digest(results: dict[str, list[dict]], name: str) -> str:
     )
 
     client = _llm_client()
-    model = os.environ["KIT_LLM_MODEL"]
+    model = LLM_MODEL
 
     completion = client.chat.completions.create(
         model=model,
