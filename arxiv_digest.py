@@ -37,6 +37,7 @@ OUTPUT_INSTRUCTIONS: str = _cfg["output_instructions"].strip()
 USER_NAME: str = _cfg["user"]["name"]
 LLM_BASE_URL: str = _cfg["llm"]["base_url"]
 EMAIL_SUBJECT: str = _cfg["email"]["subject"]
+EMAIL_TO: str = _cfg["email"]["to"]
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ARXIV_NS = "http://www.w3.org/2005/Atom"
@@ -219,11 +220,11 @@ def send_email(subject: str, body: str) -> None:
     msg = MIMEText(html, "html", "utf-8")
     msg["Subject"] = subject
     msg["From"] = address
-    msg["To"] = address
+    msg["To"] = EMAIL_TO
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(address, password)
-        smtp.sendmail(address, [address], msg.as_string())
+        smtp.sendmail(address, [EMAIL_TO], msg.as_string())
 
 
 def main() -> None:

@@ -41,3 +41,4 @@ llm:
 
 email:
   subject: "[arXiv] Daily Digest"
+  to: aritra.bal@kit.edu
