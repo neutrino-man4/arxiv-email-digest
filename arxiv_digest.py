@@ -1,8 +1,9 @@
 """
 arXiv Daily Digest Bot
 
-Fetches recent papers from specified arXiv categories, selects the 10 most
-relevant per category via the KIT LLM API, and delivers a digest by email.
+Fetches recent papers from specified arXiv categories, selects the most
+relevant ones per category via the KIT LLM API, and delivers a digest by email.
+All user-facing settings are read from config.yaml.
 
 Author: Aritra Bal (ETP)
 Date: 2026-06-12
@@ -13,24 +14,25 @@ import os
 import smtplib
 import xml.etree.ElementTree as ET
 from email.mime.text import MIMEText
+from pathlib import Path
 
 import httpx
+import yaml
 from openai import OpenAI
 
 # ---------------------------------------------------------------------------
-# Configuration
+# Config
 # ---------------------------------------------------------------------------
 
-CATEGORIES: list[str] = ["hep-ph", "hep-ex", "cs.LG", "quant-ph"]
-FETCH_N: int = 50
+with (Path(__file__).parent / "config.yaml").open() as _f:
+    _cfg = yaml.safe_load(_f)
 
-RESEARCHER_PROFILE: str = (
-    "The reader is a particle physicist and ML researcher working on "
-    "Lorentz-equivariant neural networks, jet tagging, quantum machine learning "
-    "(continuous-variable QML, qumode architectures), anomaly detection at CMS, "
-    "simulation-based inference, and information geometry (Fisher information, "
-    "natural gradient). Prioritise papers directly relevant to these topics."
-)
+CATEGORIES: list[str] = _cfg["categories"]
+FETCH_N: int = _cfg["fetch_n"]
+SELECT_N: int = _cfg["select_n"]
+RESEARCHER_PROFILE: str = _cfg["researcher_profile"].strip()
+LLM_BASE_URL: str = _cfg["llm"]["base_url"]
+EMAIL_SUBJECT: str = _cfg["email"]["subject"]
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ARXIV_NS = "http://www.w3.org/2005/Atom"
@@ -40,10 +42,10 @@ ARXIV_NS = "http://www.w3.org/2005/Atom"
 # ---------------------------------------------------------------------------
 
 
-def _kit_client() -> OpenAI:
+def _llm_client() -> OpenAI:
     return OpenAI(
         api_key=os.environ["KIT_LLM_KEY"],
-        base_url="https://ki-toolbox.scc.kit.edu/api",
+        base_url=LLM_BASE_URL,
     )
 
 
@@ -90,11 +92,11 @@ def fetch_papers(category: str, n: int) -> list[dict]:
     return papers
 
 
-def select_best(papers: list[dict], category: str) -> list[dict]:
-    """Use the KIT LLM to select the 10 most relevant papers for the researcher.
+def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[dict]:
+    """Use the LLM to select the n most relevant papers for the researcher.
 
     Sends a numbered list of titles + truncated abstracts and expects a JSON
-    array of integer indices back.  Raises on parse failure or wrong type.
+    array of integer indices back. Raises on parse failure or wrong type.
     Silently drops out-of-range indices.
     """
     numbered = "\n\n".join(
@@ -104,18 +106,18 @@ def select_best(papers: list[dict], category: str) -> list[dict]:
 
     system_prompt = (
         f"{RESEARCHER_PROFILE}\n\n"
-        "You are selecting papers for the researcher's daily digest. "
-        "Return ONLY a JSON array of exactly 10 integer indices (0-based) "
+        "You are selecting papers for a physics/ML researcher's daily digest. "
+        f"Return ONLY a JSON array of exactly {n} integer indices (0-based) "
         "identifying the most relevant papers. No explanation, no markdown, "
-        "just the raw JSON array, e.g. [3, 7, 12, ...]."
+        f"just the raw JSON array, e.g. [3, 7, 12, ...]."
     )
     user_prompt = (
         f"Category: {category}\n\n"
         f"Papers:\n{numbered}\n\n"
-        "Return the 10 best indices as a JSON array."
+        f"Return the {n} best indices as a JSON array."
     )
 
-    client = _kit_client()
+    client = _llm_client()
     model = os.environ["KIT_LLM_MODEL"]
 
     completion = client.chat.completions.create(
@@ -152,9 +154,8 @@ def build_email_body(results: dict[str, list[dict]]) -> str:
     for category, papers in results.items():
         lines = [f"=== {category} ===", ""]
         for idx, paper in enumerate(papers, start=1):
-            arxiv_url = paper["id"]
             lines.append(f"{idx}. {paper['title']}")
-            lines.append(f"   {arxiv_url}")
+            lines.append(f"   {paper['id']}")
             lines.append("")
         sections.append("\n".join(lines))
     return "\n".join(sections)
@@ -188,7 +189,7 @@ def main() -> None:
         results[category] = selected
 
     body = build_email_body(results)
-    send_email("[arXiv] Daily Digest", body)
+    send_email(EMAIL_SUBJECT, body)
     print("Digest sent successfully.")
 
 
