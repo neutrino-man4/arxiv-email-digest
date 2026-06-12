@@ -110,8 +110,10 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
     array of integer indices back, ordered from most to least relevant.
     Raises on parse failure or wrong type. Silently drops out-of-range indices.
     """
+    # Truncate abstracts here to keep the prompt within the model's context window.
+    # Full abstracts are used later in format_digest where summaries are written.
     numbered = "\n\n".join(
-        f"[{i}] {p['title']}\nAuthors: {', '.join(p['authors'])}\n{p['abstract']}"
+        f"[{i}] {p['title']}\nAuthors: {', '.join(p['authors'])}\n{p['abstract'][:400]}"
         for i, p in enumerate(papers)
     )
 
@@ -138,7 +140,7 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
             {"role": "user", "content": user_prompt},
         ],
         temperature=0.0,
-        max_tokens=2048,
+        max_tokens=32768,
     )
 
     raw = (completion.choices[0].message.content or "").strip()
