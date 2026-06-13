@@ -40,6 +40,7 @@ LLM_BASE_URL: str = _cfg["llm"]["base_url"]
 LLM_MODEL: str = _cfg["llm"]["model"]
 EMAIL_SUBJECT: str = _cfg["email"]["subject"]
 EMAIL_TO: str = _cfg["email"]["to"]
+EMAIL_DISPLAY_NAME: str = _cfg["email"]["display_name"]
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ARXIV_NS = "http://www.w3.org/2005/Atom"
@@ -231,7 +232,7 @@ def send_email(subject: str, body: str) -> None:
     html = md.markdown(body, extensions=["extra"])
     msg = MIMEText(html, "html", "utf-8")
     msg["Subject"] = subject
-    msg["From"] = f"{USER_NAME} <{address}>"
+    msg["From"] = f"{EMAIL_DISPLAY_NAME} <{address}>"
     msg["To"] = EMAIL_TO
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
