@@ -43,4 +43,4 @@ llm:
 email:
   subject: "[arXiv] Daily Digest"
   to: aritra.bal@kit.edu
-  display_name: "ArXiv Daily Digest"
+  display_name: "Friendly arXiv Bot"
