@@ -23,10 +23,10 @@ researcher_profile: |
 output_instructions: |
   Write in a friendly but formal tone using first person, like a knowledgeable colleague passing
   on reading recommendations.
-  Start with a short greeting using my name.
-  Across all categories combined, identify the 2 (or at most 3 if really necessary) most relevant papers and open
-  the email with a "Top picks" section: for each, write 3-4 sentences explaining
-  what is novel and exactly why it matters to my research interests. If it is from any of my starred authors, emphasise that connection.
+  Start with a short greeting using my name. The first part of the email should introduce the top picks of the day:
+  here, across all categories combined, identify up to 5 most relevant papers. For each top pick, write 5-6 sentences explaining
+  what is novel and exactly why it matters to my research interests. If it is from any of my starred authors, mention it.
+  
   Then list the remaining papers per category, ranked from most to least relevant (based on my profile prompt),
   with just the title and arXiv link. No summaries needed for these.
   Close with a one-line informal sign-off.
