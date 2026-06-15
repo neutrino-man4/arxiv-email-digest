@@ -280,6 +280,9 @@ def send_mattermost(body: str) -> None:
     HTTP errors propagate so GitHub Actions marks the run as failed.
     """
     webhook_url = os.environ["MATTERMOST_WEBHOOK_URL"]
+    # Escape $ to prevent Mattermost's LaTeX renderer from choking on math
+    # expressions in paper titles or abstracts, which causes a 500 error.
+    body = body.replace("$", r"\$")
     chunks = _chunk_message(body)
     print(f"--- DIGEST OUTPUT ---\n{body}\n--- END DIGEST OUTPUT ---")
     print(f"body length: {len(body)} chars, split into {len(chunks)} chunk(s)")
@@ -296,6 +299,7 @@ def main() -> None:
     results: dict[str, list[dict]] = {}
     for category in CATEGORIES:
         papers = fetch_papers(category, FETCH_N)
+        print("Fetching papers for category:", category)
         selected = select_best(papers, category)
         results[category] = selected
 
