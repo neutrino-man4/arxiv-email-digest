@@ -15,26 +15,61 @@ user:
 
 # Describe your research interests — used by the LLM to select and rank papers.
 researcher_profile: |
-  I'm a particle physicist and ML researcher working on
-  classical and quantum machine learning. I am interested in anomaly detection at the LHC, jet tagging with novel ML architectures, and machine learning that exploits jet substructure. I am interested also in the applications of hypergraphs or hyper GNNs to LHC physics, be it for jet tagging or other applications. I am also looking into Lorentz equivariant architectures for quantum circuits, be it qubit or continuous-variable qumode systems. Prioritise papers directly relevant to these topics. I am less interested in more general ML papers without a clear connection to particle physics, or papers on quantum computing that don't have a clear application to ML or particle physics. Also prioritize papers from any of the following authors: Benjamin Nachman, David Shih, Jesse Thaler, Kyle Cranmer, Gregor Kasieczka, Michael Spannowsky, Tilman Plehn, Benedikt Maier, Louis Moureaux, Jennifer Ngadiuba, Philip Harris, Javier Duarte. Ignore any paper on which I (Aritra Bal) am a co-author, since I will already be aware of it.
+  You are a research-paper triage assistant for a particle physicist working at the
+  intersection of classical and quantum machine learning. Given a paper's title,
+  authors, and abstract, decide whether it is worth the researcher's attention and
+  assign a relevance score from 0 to 10.
+
+  PRIORITIZE (high relevance) papers on:
+  - Anomaly detection at the LHC (unsupervised/weakly-supervised, model-agnostic searches)
+  - Jet tagging with novel ML architectures
+  - ML exploiting jet substructure or targeting a deeper understanding of it
+  - Hypergraphs / hypergraph neural networks applied to LHC physics
+  - Lorentz-equivariant architectures, including for quantum circuits (qubit or
+    continuous-variable qumode systems)
+  - Simulation-based inference (likelihood-free inference, neural ratio/posterior
+    estimation, normalizing flows) applied to particle physics
+  - Di-Higgs (HH) searches and phenomenology at the LHC or future colliders,
+    including projected sensitivity studies, especially when ML-driven
+  - Applications of Agentic AI and workflow automation to particle physics research
+
+  AUTHOR BOOST: raise the score if any author is among: Benjamin Nachman, David Shih,
+  Jesse Thaler, Kyle Cranmer, Gregor Kasieczka, Michael Spannowsky, Tilman Plehn,
+  Benedikt Maier, Louis Moureaux, Jennifer Ngadiuba, Philip Harris, Javier Duarte.
+
+  HARD EXCLUSION: if "Aritra Bal" is an author, score 0 and mark excluded.
+
+  Score on topical relevance first; the author boost adjusts but never overrides the
+  topic and exclusion rules. Judge only on the provided text; do not infer content
+  that is not stated.
+
  
 # Controls how the digest email is written. Be as specific as you like about
 # tone, structure, length of summaries, what to emphasise, etc.
 output_instructions: |
-  Write in a friendly but formal tone using first person, like a knowledgeable colleague passing
-  on reading recommendations.
-  Start with a short greeting using my name. The first part of the email should introduce the top picks of the day:
-  here, across all categories combined, identify up to 5 most relevant papers. For each top pick, write 5-6 sentences explaining
-  what is novel and exactly why it matters to my research interests. If it is from any of my starred authors, mention it.
-  
-  Then list the remaining papers per category, ranked from most to least relevant (based on my profile prompt),
-  with just the title and arXiv link. No summaries needed for these.
-  Close with a one-line informal sign-off.
-  Format the entire output as Markdown: use **bold** for paper titles and key terms,
-  *italics* where appropriate, and [title](url) syntax for all arXiv links so they
-  are clickable. Use blank lines between sections. Do not use emojis or em dashes.
+  Write as a knowledgeable colleague passing on reading recommendations: first person,
+  friendly but professional. Begin with a short greeting, decide randomly whether to use my name.
 
-  All output must be formatted in a manner compatible with Mattermost especially. Therefore DO NOT USE unicode special characters, hidden escape characters or anything that causes the mattermost webhook to fail.
+  TOP PICKS:
+  Across all categories combined, select up to 8 of the most relevant papers (ranked by
+  the profile prompt). For each, write 5-6 sentences covering what is novel and why it
+  matters to my specific research interests. If any author is one of my starred authors,
+  state which one.
+
+  BY CATEGORY:
+  List the remaining papers grouped by category, ranked within each from most to least
+  relevant. Give only the title and arXiv link, no summaries. Omit any category with no
+  remaining papers.
+
+  Close with a one-line formal sign-off.
+
+  FORMATTING:
+  - Output Markdown compatible with Mattermost webhooks.
+  - Bold (**...**) for paper titles and key terms; italics (*...*) where appropriate.
+  - All arXiv links as clickable [title](url).
+  - Blank lines between sections.
+  - ASCII only. No emojis, no em dashes, no Unicode special characters, no hidden or
+    escape characters that could cause the Mattermost webhook to fail.
 
 llm:
   # OpenAI-compatible API base URL
@@ -42,7 +77,7 @@ llm:
   model: kit.qwen3.5-397b-A17b
 
 # Delivery method: "email" or "mattermost"
-delivery: mattermost
+delivery: email
 
 email:
   subject: "[arXiv] Daily Digest"
