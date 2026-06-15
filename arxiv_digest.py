@@ -53,10 +53,11 @@ ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ARXIV_NS = "http://www.w3.org/2005/Atom"
 
 _ET = ZoneInfo("America/New_York")
-_CUTOFF_HOUR = 14  # arXiv submission cutoff: 14:00 ET on announcement days
+_CUTOFF_HOUR = 14       # arXiv submission cutoff: 14:00 ET on announcement days
+_ANNOUNCEMENT_HOUR = 20  # arXiv announces new papers at ~20:00 ET
 
-# Maps today's weekday (Monday=0) to (start_offset, end_offset) in days,
-# giving the submission window for the most recent arXiv announcement.
+# (start_offset, end_offset) in days relative to today, keyed by weekday
+# (Monday=0 … Sunday=6), for the most recent arXiv announcement window.
 #
 # arXiv announcement schedule (all times US Eastern):
 #   Mon 14:00 – Tue 14:00  → announced Tue 20:00
@@ -65,34 +66,46 @@ _CUTOFF_HOUR = 14  # arXiv submission cutoff: 14:00 ET on announcement days
 #   Thu 14:00 – Fri 14:00  → announced Sun 20:00  (no Fri/Sat announcements)
 #   Fri 14:00 – Mon 14:00  → announced Mon 20:00  (3-day weekend window)
 #
-# We run at ~13:00 Berlin time = ~07:00 ET, always before the day's 20:00 ET
-# announcement, so the relevant announcement is always from the previous night.
-_WINDOW_OFFSETS: dict[int, tuple[int, int]] = {
-    0: (-4, -3),  # Monday run    → Thu 14:00 – Fri 14:00  (Sun announcement)
-    1: (-4, -1),  # Tuesday run   → Fri 14:00 – Mon 14:00  (Mon announcement, 3-day)
-    2: (-2, -1),  # Wednesday run → Mon 14:00 – Tue 14:00
-    3: (-2, -1),  # Thursday run  → Tue 14:00 – Wed 14:00
-    4: (-2, -1),  # Friday run    → Wed 14:00 – Thu 14:00
+# Before today's 20:00 ET announcement the relevant window is from last night.
+_PRE_ANNOUNCEMENT_OFFSETS: dict[int, tuple[int, int]] = {
+    0: (-4, -3),  # Monday    → Thu 14:00 – Fri 14:00  (Sun was last announcement)
+    1: (-4, -1),  # Tuesday   → Fri 14:00 – Mon 14:00  (Mon was last, 3-day)
+    2: (-2, -1),  # Wednesday → Mon 14:00 – Tue 14:00
+    3: (-2, -1),  # Thursday  → Tue 14:00 – Wed 14:00
+    4: (-2, -1),  # Friday    → Wed 14:00 – Thu 14:00  (no Fri announcement)
+    6: (-4, -3),  # Sunday    → Wed 14:00 – Thu 14:00  (Thu was last announcement)
+}
+
+# At or after 20:00 ET today's announcement has already happened; only days
+# that actually carry an announcement appear here.
+_POST_ANNOUNCEMENT_OFFSETS: dict[int, tuple[int, int]] = {
+    0: (-3, 0),   # Monday    → Fri 14:00 – Mon 14:00  (3-day)
+    1: (-1, 0),   # Tuesday   → Mon 14:00 – Tue 14:00
+    2: (-1, 0),   # Wednesday → Tue 14:00 – Wed 14:00
+    3: (-1, 0),   # Thursday  → Wed 14:00 – Thu 14:00
+    6: (-3, -2),  # Sunday    → Thu 14:00 – Fri 14:00
 }
 
 
 def get_submission_window() -> tuple[datetime, datetime]:
     """Return (window_start, window_end) for the most recent arXiv announcement.
 
-    Both datetimes are timezone-aware (America/New_York). Raises ValueError if
-    called on a Saturday or Sunday, when no announcement is expected.
+    Both datetimes are timezone-aware (America/New_York). Raises ValueError on
+    Saturday, or any time when no announcement data is available.
     """
     now = datetime.now(tz=_ET)
     today = now.date()
     weekday = today.weekday()  # Monday=0 … Sunday=6
 
-    if weekday not in _WINDOW_OFFSETS:
+    if now.hour >= _ANNOUNCEMENT_HOUR and weekday in _POST_ANNOUNCEMENT_OFFSETS:
+        start_off, end_off = _POST_ANNOUNCEMENT_OFFSETS[weekday]
+    elif weekday in _PRE_ANNOUNCEMENT_OFFSETS:
+        start_off, end_off = _PRE_ANNOUNCEMENT_OFFSETS[weekday]
+    else:
         raise ValueError(
-            f"No arXiv announcement on weekends (today is weekday {weekday}). "
-            "Run on a weekday (Mon–Fri)."
+            f"Cannot determine arXiv announcement window for weekday {weekday} "
+            "at the current time (Saturday has no announcement)."
         )
-
-    start_off, end_off = _WINDOW_OFFSETS[weekday]
 
     def _cutoff(offset: int) -> datetime:
         d = today + timedelta(days=offset)
