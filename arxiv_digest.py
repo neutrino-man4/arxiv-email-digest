@@ -245,7 +245,7 @@ def send_email(subject: str, body: str) -> None:
         smtp.sendmail(address, [EMAIL_TO], msg.as_string())
 
 
-_MATTERMOST_MAX_LEN = 16000
+_MATTERMOST_MAX_LEN = 4000
 
 
 def _chunk_message(text: str) -> list[str]:
@@ -280,9 +280,6 @@ def send_mattermost(body: str) -> None:
     HTTP errors propagate so GitHub Actions marks the run as failed.
     """
     webhook_url = os.environ["MATTERMOST_WEBHOOK_URL"]
-    # Escape $ to prevent Mattermost's LaTeX renderer from choking on math
-    # expressions in paper titles or abstracts, which causes a 500 error.
-    body = body.replace("$", r"\$")
     chunks = _chunk_message(body)
     print(f"--- DIGEST OUTPUT ---\n{body}\n--- END DIGEST OUTPUT ---")
     print(f"body length: {len(body)} chars, split into {len(chunks)} chunk(s)")
