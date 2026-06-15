@@ -2,7 +2,7 @@ name: arXiv Daily Digest
 
 on:
   schedule:
-    - cron: "26 8 * * 1-5"
+    - cron: "26 10 * * 1-5"
     timezone: Europe/Berlin
   workflow_dispatch:
 
