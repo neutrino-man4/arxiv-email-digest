@@ -6,7 +6,7 @@ categories:
 
 # Papers selected by the LLM and included in the email per category
 select_n: 10
-
+max_results: 70
 user:
   name: Aritra
 

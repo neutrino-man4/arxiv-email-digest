@@ -38,7 +38,7 @@ with (Path(__file__).parent / "config.yaml").open() as _f:
 
 CATEGORIES: list[str] = _cfg["categories"]
 SELECT_N: int = _cfg["select_n"]
-MAX_RESULTS: int = 500  # safety cap; the time window is the real filter
+MAX_RESULTS: int = _cfg["max_results"]  # safety cap; the time window is the real filter
 RESEARCHER_PROFILE: str = _cfg["researcher_profile"].strip()
 OUTPUT_INSTRUCTIONS: str = _cfg["output_instructions"].strip()
 USER_NAME: str = _cfg["user"]["name"]
