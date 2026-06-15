@@ -3,3 +3,4 @@ httpx
 pyyaml
 markdown
 python-dotenv
+tzdata
