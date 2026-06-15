@@ -242,18 +242,46 @@ def send_email(subject: str, body: str) -> None:
         smtp.sendmail(address, [EMAIL_TO], msg.as_string())
 
 
+_MATTERMOST_MAX_LEN = 16000
+
+
+def _chunk_message(text: str) -> list[str]:
+    """Split text at paragraph boundaries so no chunk exceeds the Mattermost limit."""
+    paragraphs = text.split("\n\n")
+    chunks: list[str] = []
+    current_parts: list[str] = []
+    current_len = 0
+
+    for para in paragraphs:
+        sep = 2 if current_parts else 0
+        if current_len + sep + len(para) <= _MATTERMOST_MAX_LEN:
+            current_parts.append(para)
+            current_len += sep + len(para)
+        else:
+            if current_parts:
+                chunks.append("\n\n".join(current_parts))
+            current_parts = [para]
+            current_len = len(para)
+
+    if current_parts:
+        chunks.append("\n\n".join(current_parts))
+
+    return chunks
+
+
 def send_mattermost(body: str) -> None:
     """Post the digest to a Mattermost incoming webhook.
 
-    Mattermost renders Markdown natively, so the body is posted as-is.
+    Splits at paragraph boundaries if the body exceeds Mattermost's ~16k
+    character post limit, then posts each chunk sequentially.
     HTTP errors propagate so GitHub Actions marks the run as failed.
     """
     webhook_url = os.environ["MATTERMOST_WEBHOOK_URL"]
-    payload = {"text": body}
-    response = httpx.post(webhook_url, json=payload, timeout=30)
-    if response.is_error:
-        print(f"Mattermost webhook error {response.status_code}: {response.text}")
-        response.raise_for_status()
+    for chunk in _chunk_message(body):
+        response = httpx.post(webhook_url, json={"text": chunk}, timeout=30)
+        if response.is_error:
+            print(f"Mattermost webhook error {response.status_code}: {response.text}")
+            response.raise_for_status()
 
 
 def main() -> None:
