@@ -1,11 +1,11 @@
 """
 arXiv Daily Digest Bot
 
-Fetches recent papers from specified arXiv categories, selects and ranks the
-most relevant ones per category via the KIT LLM API, then uses a second LLM
-call to craft a personalised digest. Delivery is either via Gmail SMTP or a
-Mattermost webhook, controlled by the `delivery` key in config.yaml.
-All user-facing settings are read from config.yaml.
+Fetches papers from specified arXiv categories for the most recent announcement
+window, selects and ranks the most relevant ones per category via the KIT LLM
+API, then uses a second LLM call to craft a personalised digest. Delivery is
+either via Gmail SMTP or a Mattermost webhook, controlled by the `delivery` key
+in config.yaml. All user-facing settings are read from config.yaml.
 
 Author: Aritra Bal (ETP)
 Date: 2026-06-12
@@ -16,8 +16,10 @@ import os
 import re
 import smtplib
 import xml.etree.ElementTree as ET
+from datetime import datetime, timedelta
 from email.mime.text import MIMEText
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 import httpx
 import markdown as md
@@ -35,8 +37,8 @@ with (Path(__file__).parent / "config.yaml").open() as _f:
     _cfg = yaml.safe_load(_f)
 
 CATEGORIES: list[str] = _cfg["categories"]
-FETCH_N: int = _cfg["fetch_n"]
 SELECT_N: int = _cfg["select_n"]
+MAX_RESULTS: int = 500  # safety cap; the time window is the real filter
 RESEARCHER_PROFILE: str = _cfg["researcher_profile"].strip()
 OUTPUT_INSTRUCTIONS: str = _cfg["output_instructions"].strip()
 USER_NAME: str = _cfg["user"]["name"]
@@ -49,6 +51,55 @@ EMAIL_DISPLAY_NAME: str = _cfg["email"]["display_name"]
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ARXIV_NS = "http://www.w3.org/2005/Atom"
+
+_ET = ZoneInfo("America/New_York")
+_CUTOFF_HOUR = 14  # arXiv submission cutoff: 14:00 ET on announcement days
+
+# Maps today's weekday (Monday=0) to (start_offset, end_offset) in days,
+# giving the submission window for the most recent arXiv announcement.
+#
+# arXiv announcement schedule (all times US Eastern):
+#   Mon 14:00 – Tue 14:00  → announced Tue 20:00
+#   Tue 14:00 – Wed 14:00  → announced Wed 20:00
+#   Wed 14:00 – Thu 14:00  → announced Thu 20:00
+#   Thu 14:00 – Fri 14:00  → announced Sun 20:00  (no Fri/Sat announcements)
+#   Fri 14:00 – Mon 14:00  → announced Mon 20:00  (3-day weekend window)
+#
+# We run at ~13:00 Berlin time = ~07:00 ET, always before the day's 20:00 ET
+# announcement, so the relevant announcement is always from the previous night.
+_WINDOW_OFFSETS: dict[int, tuple[int, int]] = {
+    0: (-4, -3),  # Monday run    → Thu 14:00 – Fri 14:00  (Sun announcement)
+    1: (-4, -1),  # Tuesday run   → Fri 14:00 – Mon 14:00  (Mon announcement, 3-day)
+    2: (-2, -1),  # Wednesday run → Mon 14:00 – Tue 14:00
+    3: (-2, -1),  # Thursday run  → Tue 14:00 – Wed 14:00
+    4: (-2, -1),  # Friday run    → Wed 14:00 – Thu 14:00
+}
+
+
+def get_submission_window() -> tuple[datetime, datetime]:
+    """Return (window_start, window_end) for the most recent arXiv announcement.
+
+    Both datetimes are timezone-aware (America/New_York). Raises ValueError if
+    called on a Saturday or Sunday, when no announcement is expected.
+    """
+    now = datetime.now(tz=_ET)
+    today = now.date()
+    weekday = today.weekday()  # Monday=0 … Sunday=6
+
+    if weekday not in _WINDOW_OFFSETS:
+        raise ValueError(
+            f"No arXiv announcement on weekends (today is weekday {weekday}). "
+            "Run on a weekday (Mon–Fri)."
+        )
+
+    start_off, end_off = _WINDOW_OFFSETS[weekday]
+
+    def _cutoff(offset: int) -> datetime:
+        d = today + timedelta(days=offset)
+        return datetime(d.year, d.month, d.day, _CUTOFF_HOUR, 0, 0, tzinfo=_ET)
+
+    return _cutoff(start_off), _cutoff(end_off)
+
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -67,16 +118,20 @@ def _llm_client() -> OpenAI:
 # ---------------------------------------------------------------------------
 
 
-def fetch_papers(category: str, n: int) -> list[dict]:
-    """Fetch the n most recently submitted papers from an arXiv category.
+def fetch_papers(
+    category: str, window_start: datetime, window_end: datetime
+) -> list[dict]:
+    """Fetch papers from an arXiv category within the given submission window.
 
+    Retrieves up to MAX_RESULTS recent papers (sorted newest-first) and keeps
+    only those whose ``<published>`` timestamp falls in [window_start, window_end).
     Returns a list of dicts with keys: ``title``, ``authors``, ``abstract``, ``id``.
     Raises ``httpx.HTTPStatusError`` on non-200 responses.
-    Silently skips malformed XML entries.
+    Silently skips malformed or undatable XML entries.
     """
     params = {
         "search_query": f"cat:{category}",
-        "max_results": n,
+        "max_results": MAX_RESULTS,
         "sortBy": "submittedDate",
         "sortOrder": "descending",
     }
@@ -90,8 +145,21 @@ def fetch_papers(category: str, n: int) -> list[dict]:
             title_el = entry.find(f"{{{ARXIV_NS}}}title")
             abstract_el = entry.find(f"{{{ARXIV_NS}}}summary")
             id_el = entry.find(f"{{{ARXIV_NS}}}id")
-            if title_el is None or abstract_el is None or id_el is None:
+            published_el = entry.find(f"{{{ARXIV_NS}}}published")
+            if any(
+                el is None
+                for el in (title_el, abstract_el, id_el, published_el)
+            ):
                 continue
+
+            # Parse the UTC timestamp ("2026-06-14T18:00:00Z")
+            published = datetime.fromisoformat(
+                (published_el.text or "").strip().replace("Z", "+00:00")
+            )
+
+            if not (window_start <= published < window_end):
+                continue
+
             authors = [
                 a.findtext(f"{{{ARXIV_NS}}}name", "").strip()
                 for a in entry.findall(f"{{{ARXIV_NS}}}author")
@@ -104,7 +172,7 @@ def fetch_papers(category: str, n: int) -> list[dict]:
                     "id": id_el.text.strip(),
                 }
             )
-        except (AttributeError, TypeError):
+        except (AttributeError, TypeError, ValueError):
             continue
 
     return papers
@@ -293,10 +361,14 @@ def send_mattermost(body: str) -> None:
 
 def main() -> None:
     """Entry point: fetch, select, format, and deliver the daily arXiv digest."""
+    window_start, window_end = get_submission_window()
+    print(f"Submission window: {window_start.isoformat()} → {window_end.isoformat()} ET")
+
     results: dict[str, list[dict]] = {}
     for category in CATEGORIES:
-        papers = fetch_papers(category, FETCH_N)
-        print("Fetching papers for category:", category)
+        print(f"Fetching papers for category: {category}")
+        papers = fetch_papers(category, window_start, window_end)
+        print(f"  {len(papers)} papers in window")
         selected = select_best(papers, category)
         results[category] = selected
 
