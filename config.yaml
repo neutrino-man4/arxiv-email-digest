@@ -74,7 +74,7 @@ llm:
   model: kit.qwen3.5-397b-A17b
 
 # Delivery method: "email" or "mattermost"
-delivery: email
+delivery: mattermost
 
 email:
   subject: "[arXiv] Daily Digest"
