@@ -277,7 +277,11 @@ def send_mattermost(body: str) -> None:
     HTTP errors propagate so GitHub Actions marks the run as failed.
     """
     webhook_url = os.environ["MATTERMOST_WEBHOOK_URL"]
-    for chunk in _chunk_message(body):
+    chunks = _chunk_message(body)
+    print(f"--- DIGEST OUTPUT ---\n{body}\n--- END DIGEST OUTPUT ---")
+    print(f"body length: {len(body)} chars, split into {len(chunks)} chunk(s)")
+    for i, chunk in enumerate(chunks):
+        print(f"chunk {i + 1}/{len(chunks)}: {len(chunk)} chars")
         response = httpx.post(webhook_url, json={"text": chunk}, timeout=30)
         if response.is_error:
             print(f"Mattermost webhook error {response.status_code}: {response.text}")
