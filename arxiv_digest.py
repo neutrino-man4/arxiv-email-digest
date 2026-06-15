@@ -251,7 +251,9 @@ def send_mattermost(body: str) -> None:
     webhook_url = os.environ["MATTERMOST_WEBHOOK_URL"]
     payload = {"text": body}
     response = httpx.post(webhook_url, json=payload, timeout=30)
-    response.raise_for_status()
+    if response.is_error:
+        print(f"Mattermost webhook error {response.status_code}: {response.text}")
+        response.raise_for_status()
 
 
 def main() -> None:
