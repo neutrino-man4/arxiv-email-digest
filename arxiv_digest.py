@@ -3,7 +3,8 @@ arXiv Daily Digest Bot
 
 Fetches recent papers from specified arXiv categories, selects and ranks the
 most relevant ones per category via the KIT LLM API, then uses a second LLM
-call to craft a personalised digest and posts it to a Mattermost webhook.
+call to craft a personalised digest. Delivery is either via Gmail SMTP or a
+Mattermost webhook, controlled by the `delivery` key in config.yaml.
 All user-facing settings are read from config.yaml.
 
 Author: Aritra Bal (ETP)
@@ -13,10 +14,13 @@ Date: 2026-06-12
 import json
 import os
 import re
+import smtplib
 import xml.etree.ElementTree as ET
+from email.mime.text import MIMEText
 from pathlib import Path
 
 import httpx
+import markdown as md
 import yaml
 from openai import OpenAI
 
@@ -35,6 +39,10 @@ OUTPUT_INSTRUCTIONS: str = _cfg["output_instructions"].strip()
 USER_NAME: str = _cfg["user"]["name"]
 LLM_BASE_URL: str = _cfg["llm"]["base_url"]
 LLM_MODEL: str = _cfg["llm"]["model"]
+DELIVERY: str = _cfg["delivery"]
+EMAIL_SUBJECT: str = _cfg["email"]["subject"]
+EMAIL_TO: str = _cfg["email"]["to"]
+EMAIL_DISPLAY_NAME: str = _cfg["email"]["display_name"]
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ARXIV_NS = "http://www.w3.org/2005/Atom"
@@ -214,6 +222,26 @@ def format_digest(results: dict[str, list[dict]], name: str) -> str:
     return (completion.choices[0].message.content or "").strip()
 
 
+def send_email(subject: str, body: str) -> None:
+    """Send the digest email via Gmail SMTP over SSL (port 465).
+
+    Both sender and recipient are the configured Gmail address (self-send).
+    SMTP exceptions propagate so GitHub Actions marks the run as failed.
+    """
+    address = os.environ["GMAIL_ADDRESS"]
+    password = os.environ["GMAIL_APP_PASSWORD"]
+
+    html = md.markdown(body, extensions=["extra"])
+    msg = MIMEText(html, "html", "utf-8")
+    msg["Subject"] = subject
+    msg["From"] = f"{EMAIL_DISPLAY_NAME} <{address}>"
+    msg["To"] = EMAIL_TO
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(address, password)
+        smtp.sendmail(address, [EMAIL_TO], msg.as_string())
+
+
 def send_mattermost(body: str) -> None:
     """Post the digest to a Mattermost incoming webhook.
 
@@ -227,7 +255,7 @@ def send_mattermost(body: str) -> None:
 
 
 def main() -> None:
-    """Entry point: fetch, select, format, and post the daily arXiv digest."""
+    """Entry point: fetch, select, format, and deliver the daily arXiv digest."""
     results: dict[str, list[dict]] = {}
     for category in CATEGORIES:
         papers = fetch_papers(category, FETCH_N)
@@ -235,8 +263,15 @@ def main() -> None:
         results[category] = selected
 
     body = format_digest(results, USER_NAME)
-    send_mattermost(body)
-    print("Digest posted successfully.")
+
+    if DELIVERY == "email":
+        send_email(EMAIL_SUBJECT, body)
+        print("Digest sent via email.")
+    elif DELIVERY == "mattermost":
+        send_mattermost(body)
+        print("Digest posted to Mattermost.")
+    else:
+        raise ValueError(f"Unknown delivery method in config: {DELIVERY!r}")
 
 
 if __name__ == "__main__":
