@@ -34,7 +34,7 @@ output_instructions: |
   *italics* where appropriate, and [title](url) syntax for all arXiv links so they
   are clickable. Use blank lines between sections. Do not use emojis or em dashes.
 
-  All output must be formatted in a manner compatible with Mattermost or email. Therefore no unicode special characters. 
+  All output must be formatted in a manner compatible with Mattermost especially. Therefore DO NOT USE unicode special characters, hidden escape characters or anything that causes the mattermost webhook to fail.
 
 llm:
   # OpenAI-compatible API base URL
