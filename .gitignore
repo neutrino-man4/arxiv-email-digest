@@ -1,6 +1,6 @@
 # Claude
 .claude/
-
+logs/
 # Python
 __pycache__/
 *.py[cod]
