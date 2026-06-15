@@ -34,6 +34,8 @@ output_instructions: |
   *italics* where appropriate, and [title](url) syntax for all arXiv links so they
   are clickable. Use blank lines between sections. Do not use emojis or em dashes.
 
+  All output must be formatted in a manner compatible with Mattermost or email. Therefore no unicode special characters. 
+
 llm:
   # OpenAI-compatible API base URL
   base_url: https://ki-toolbox.scc.kit.edu/api
