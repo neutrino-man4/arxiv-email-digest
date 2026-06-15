@@ -22,7 +22,10 @@ from pathlib import Path
 import httpx
 import markdown as md
 import yaml
+from dotenv import load_dotenv
 from openai import OpenAI
+
+load_dotenv()
 
 # ---------------------------------------------------------------------------
 # Config

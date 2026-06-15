@@ -2,3 +2,4 @@ openai
 httpx
 pyyaml
 markdown
+python-dotenv
