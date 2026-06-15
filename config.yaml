@@ -4,9 +4,6 @@ categories:
   - hep-ph
   - hep-ex
 
-# Papers fetched from arXiv per category before LLM selection
-fetch_n: 50
-
 # Papers selected by the LLM and included in the email per category
 select_n: 10
 
