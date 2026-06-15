@@ -1,4 +1,3 @@
 openai
 httpx
 pyyaml
-markdown

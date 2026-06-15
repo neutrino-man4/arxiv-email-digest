@@ -17,6 +17,5 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python arxiv_digest.py
         env:
-          KIT_LLM_KEY:        ${{ secrets.KIT_LLM_KEY }}
-          GMAIL_ADDRESS:      ${{ secrets.GMAIL_ADDRESS }}
-          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          KIT_LLM_KEY:              ${{ secrets.KIT_LLM_KEY }}
+          MATTERMOST_WEBHOOK_URL:   ${{ secrets.MATTERMOST_WEBHOOK_URL }}

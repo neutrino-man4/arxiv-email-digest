@@ -32,15 +32,10 @@ output_instructions: |
   Close with a one-line informal sign-off.
   Format the entire output as Markdown: use **bold** for paper titles and key terms,
   *italics* where appropriate, and [title](url) syntax for all arXiv links so they
-  are clickable. Use blank lines between sections. The Markdown will be rendered to
-  HTML before sending, so use proper Markdown syntax throughout. Do not use emojis or em dashes. 
+  are clickable. Use blank lines between sections. The Markdown will be rendered by
+  Mattermost, so use proper Markdown syntax throughout. Do not use emojis or em dashes.
 
 llm:
   # OpenAI-compatible API base URL
   base_url: https://ki-toolbox.scc.kit.edu/api
   model: kit.qwen3.5-397b-A17b
-
-email:
-  subject: "[arXiv] Daily Digest"
-  to: aritra.bal@kit.edu
-  display_name: "Friendly arXiv Bot"
