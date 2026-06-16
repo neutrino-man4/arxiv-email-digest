@@ -1,0 +1,107 @@
+# arXiv Daily Digest — base configuration
+# Copy this file to config.yaml and fill in the fields below.
+# config.yaml is gitignored so your personal settings stay local.
+#
+# Full list of arXiv categories: https://arxiv.org/category_taxonomy
+
+# -----------------------------------------------------------------------
+# arXiv categories to monitor (one or more)
+# -----------------------------------------------------------------------
+categories:
+  - hep-ph   # replace or extend with your categories, e.g. cs.LG, quant-ph
+
+# -----------------------------------------------------------------------
+# Paper counts
+# -----------------------------------------------------------------------
+
+# Number of papers the LLM selects and includes in the digest per category.
+select_n: 10
+
+# Safety cap on papers fetched from arXiv per category before filtering.
+# Set this comfortably above the typical daily submission volume for your
+# categories (hep-ph ~ 50-80/day, cs.LG ~ 100-200/day).
+max_results: 150
+
+# -----------------------------------------------------------------------
+# Researcher profile
+# Used by the LLM both to select relevant papers and to write the digest.
+# Describe who the digest is for and what topics they care about.
+# For multiple researchers, list each one with their topics separately.
+# -----------------------------------------------------------------------
+researcher_profile: |
+  You are a research-paper triage assistant for [describe the group, e.g.
+  "a group of particle physicists working at the intersection of ML and HEP"].
+  Given a paper's title, authors, and abstract, decide whether it is worth
+  their attention and assign a relevance score from 0 to 10.
+
+  PRIORITIZE (assign high relevance) papers on the following topics:
+
+  Researcher: [Name 1]
+  - [Topic A, e.g. anomaly detection at the LHC]
+  - [Topic B]
+
+  Researcher: [Name 2]
+  - [Topic C]
+  - [Topic D]
+
+  AUTHOR BOOST: raise the score if any author is among: [comma-separated
+  list of starred author names whose work you never want to miss].
+
+  HARD EXCLUSION: if [your own name(s)] appear as authors, score 0 and
+  mark excluded (avoids self-citations in the digest).
+
+  Score on topical relevance first; the author boost adjusts but never
+  overrides the topic and exclusion rules. Judge only on the provided
+  text; do not infer content that is not stated.
+
+# -----------------------------------------------------------------------
+# Output instructions
+# Controls the tone, structure, and formatting of the digest body.
+# -----------------------------------------------------------------------
+output_instructions: |
+  Write as a knowledgeable colleague passing on reading recommendations:
+  first person, friendly but professional. Begin with a short generic
+  plural greeting such as "Hey there", "Hello folks", or similar.
+
+  Within summaries, be specific about what is novel and why it matters
+  to the researchers' interests. Use the researcher's name to flag their
+  attention where relevant (e.g. "Aritra, this might interest you").
+  Avoid generic praise; say what the novel contribution actually is.
+  If any starred authors appear on a paper, mention that in the summary.
+
+  TOP PICKS:
+  Across all categories combined, select up to [N] of the most relevant
+  papers. For each, write 4-6 sentences covering what is novel and why
+  it matters. Arrange this section into two parts if helpful. If fewer
+  than [N] papers score above 0, cover only those that exist.
+
+  BY CATEGORY:
+  List the remaining papers grouped by category, ranked within each from
+  most to least relevant. Give only the title and arXiv link, no
+  summaries. Omit categories with no remaining papers.
+
+  Close with a one-line formal sign-off.
+
+  FORMATTING:
+  - Output Markdown compatible with Mattermost webhooks.
+  - Bold (**...**) for paper titles and key terms; italics where appropriate.
+  - All arXiv links as clickable [title](url).
+  - Blank lines between sections.
+  - ASCII only. No emojis, no em dashes, no Unicode special characters.
+
+# -----------------------------------------------------------------------
+# LLM backend (OpenAI-compatible API)
+# -----------------------------------------------------------------------
+llm:
+  base_url: https://your-llm-api-endpoint/  # e.g. https://api.openai.com/v1
+  model: your-model-name                    # e.g. gpt-4o, claude-sonnet-4-6
+
+# -----------------------------------------------------------------------
+# Delivery: "email" or "mattermost"
+# -----------------------------------------------------------------------
+delivery: mattermost  # change to "email" for Gmail SMTP delivery
+
+email:
+  subject: "[arXiv] Daily Digest"
+  to: you@example.com          # recipient address
+  display_name: "arXiv Bot"    # From: display name
