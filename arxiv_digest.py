@@ -419,10 +419,10 @@ def main() -> None:
 
     body = format_digest(results)
 
-    lines = ["In the most recent submission window:"] + [
+    lines = ["P.S. In the most recent submission window:"] + [
         f"{cat}: {n} papers" for cat, n in counts.items()
     ]
-    stats_footer = "\n".join(lines)
+    stats_footer = "\n \n".join(lines)
 
     if DELIVERY == "email":
         send_email(EMAIL_SUBJECT, body + "\n\n" + stats_footer)
