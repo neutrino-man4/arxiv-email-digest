@@ -41,7 +41,6 @@ SELECT_N: int = _cfg["select_n"]
 MAX_RESULTS: int = _cfg["max_results"]  # safety cap; the time window is the real filter
 RESEARCHER_PROFILE: str = _cfg["researcher_profile"].strip()
 OUTPUT_INSTRUCTIONS: str = _cfg["output_instructions"].strip()
-USER_NAME: str = _cfg["user"]["name"]
 LLM_BASE_URL: str = _cfg["llm"]["base_url"]
 LLM_MODEL: str = _cfg["llm"]["model"]
 DELIVERY: str = _cfg["delivery"]
@@ -257,7 +256,7 @@ def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[di
     return [papers[i] for i in valid]
 
 
-def format_digest(results: dict[str, list[dict]], name: str) -> str:
+def format_digest(results: dict[str, list[dict]]) -> str:
     """Use the LLM to write the full personalised digest email body.
 
     Papers are presented with their full abstracts so the model can write
@@ -278,12 +277,11 @@ def format_digest(results: dict[str, list[dict]], name: str) -> str:
     papers_text = "\n\n".join(sections)
 
     system_prompt = (
-        f"{RESEARCHER_PROFILE}\n\n"
-        "You are writing a personalised daily arXiv digest email for this researcher.\n\n"
-        f"Formatting instructions:\n{OUTPUT_INSTRUCTIONS}"
+        f"Researcher Profile:\n{RESEARCHER_PROFILE}\n ################### \n"
+        "You are writing a personalised daily arXiv digest email for researchers. Find their names and interests from the description above. Thereafter, folow the "
+        f"formatting instructions:\n{OUTPUT_INSTRUCTIONS}"
     )
     user_prompt = (
-        f"Recipient name: {name}\n\n"
         "Here are today's selected papers, already ranked from most to least "
         "relevant within each category:\n\n"
         f"{papers_text}\n\n"
@@ -377,21 +375,29 @@ def main() -> None:
     window_start, window_end = get_submission_window()
     print(f"Submission window: {window_start.isoformat()} → {window_end.isoformat()} ET")
 
+    counts: dict[str, int] = {}
     results: dict[str, list[dict]] = {}
     for category in CATEGORIES:
         print(f"Fetching papers for category: {category}")
         papers = fetch_papers(category, window_start, window_end)
+        counts[category] = len(papers)
         print(f"  {len(papers)} papers in window")
         selected = select_best(papers, category)
         results[category] = selected
 
-    body = format_digest(results, USER_NAME)
+    body = format_digest(results)
+
+    lines = ["In the most recent submission window:"] + [
+        f"{cat}: {n} papers" for cat, n in counts.items()
+    ]
+    stats_footer = "\n".join(lines)
 
     if DELIVERY == "email":
-        send_email(EMAIL_SUBJECT, body)
+        send_email(EMAIL_SUBJECT, body + "\n\n" + stats_footer)
         print("Digest sent via email.")
     elif DELIVERY == "mattermost":
         send_mattermost(body)
+        send_mattermost(stats_footer)
         print("Digest posted to Mattermost.")
     else:
         raise ValueError(f"Unknown delivery method in config: {DELIVERY!r}")
