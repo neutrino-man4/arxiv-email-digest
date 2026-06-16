@@ -17,6 +17,9 @@ build/
 # Personal config (use base_config.yaml as the template)
 config.yaml
 
+# Local model pricing table
+prices.csv
+
 # Editor
 .vscode/
 .idea/

@@ -12,6 +12,7 @@ Date: 2026-06-12
 """
 
 import argparse
+import csv
 import json
 import os
 import re
@@ -37,6 +38,21 @@ load_dotenv()
 def _load_config(path: Path) -> dict:
     with path.open() as f:
         return yaml.safe_load(f)
+
+
+def _load_prices(path: Path) -> dict[str, tuple[float, float]]:
+    """Load model prices from a CSV with columns: model, usd_per_mtok_in, usd_per_mtok_out.
+
+    Returns a dict mapping model name → (price_in, price_out) per million tokens.
+    Returns an empty dict if the file does not exist.
+    """
+    if not path.exists():
+        return {}
+    with path.open() as f:
+        return {
+            row["model"]: (float(row["usd_per_mtok_in"]), float(row["usd_per_mtok_out"]))
+            for row in csv.DictReader(f)
+        }
 
 
 # Config globals — populated by main() after the --config argument is parsed.
@@ -427,7 +443,7 @@ def main() -> None:
     lines = ["P.S. In the most recent submission window:"] + [
         f"{cat}: {n} papers" for cat, n in counts.items()
     ]
-    stats_footer = "\n \n".join(lines)
+    stats_footer = "\n".join(lines)
 
     if DELIVERY == "email":
         send_email(EMAIL_SUBJECT, body + "\n\n" + stats_footer)
@@ -439,11 +455,20 @@ def main() -> None:
     else:
         raise ValueError(f"Unknown delivery method in config: {DELIVERY!r}")
 
-    print(
+    prices = _load_prices(Path(__file__).parent / "prices.csv")
+    total_tokens = prompt_tokens + completion_tokens
+    token_line = (
         f"Model: {LLM_MODEL} | "
         f"Tokens — prompt: {prompt_tokens}, completion: {completion_tokens}, "
-        f"total: {prompt_tokens + completion_tokens}"
+        f"total: {total_tokens}"
     )
+    if LLM_MODEL in prices:
+        price_in, price_out = prices[LLM_MODEL]
+        cost = (prompt_tokens * price_in + completion_tokens * price_out) / 1_000_000
+        token_line += f" | Estimated cost: ${cost:.4f}"
+    else:
+        token_line += " | Cost: model not in prices.csv"
+    print(token_line)
 
 
 if __name__ == "__main__":
