@@ -11,6 +11,7 @@ Author: Aritra Bal (ETP)
 Date: 2026-06-12
 """
 
+import argparse
 import json
 import os
 import re
@@ -33,20 +34,23 @@ load_dotenv()
 # Config
 # ---------------------------------------------------------------------------
 
-with (Path(__file__).parent / "config.yaml").open() as _f:
-    _cfg = yaml.safe_load(_f)
+def _load_config(path: Path) -> dict:
+    with path.open() as f:
+        return yaml.safe_load(f)
 
-CATEGORIES: list[str] = _cfg["categories"]
-SELECT_N: int = _cfg["select_n"]
-MAX_RESULTS: int = _cfg["max_results"]  # safety cap; the time window is the real filter
-RESEARCHER_PROFILE: str = _cfg["researcher_profile"].strip()
-OUTPUT_INSTRUCTIONS: str = _cfg["output_instructions"].strip()
-LLM_BASE_URL: str = _cfg["llm"]["base_url"]
-LLM_MODEL: str = _cfg["llm"]["model"]
-DELIVERY: str = _cfg["delivery"]
-EMAIL_SUBJECT: str = _cfg["email"]["subject"]
-EMAIL_TO: str = _cfg["email"]["to"]
-EMAIL_DISPLAY_NAME: str = _cfg["email"]["display_name"]
+
+# Config globals — populated by main() after the --config argument is parsed.
+CATEGORIES: list[str] = []
+SELECT_N: int = 0
+MAX_RESULTS: int = 0
+RESEARCHER_PROFILE: str = ""
+OUTPUT_INSTRUCTIONS: str = ""
+LLM_BASE_URL: str = ""
+LLM_MODEL: str = ""
+DELIVERY: str = ""
+EMAIL_SUBJECT: str = ""
+EMAIL_TO: str = ""
+EMAIL_DISPLAY_NAME: str = ""
 
 ARXIV_API_URL = "https://export.arxiv.org/api/query"
 ARXIV_NS = "http://www.w3.org/2005/Atom"
@@ -190,13 +194,15 @@ def fetch_papers(
     return papers
 
 
-def select_best(papers: list[dict], category: str, n: int = SELECT_N) -> list[dict]:
+def select_best(papers: list[dict], category: str, n: int | None = None) -> list[dict]:
     """Use the LLM to select and rank the n most relevant papers.
 
     Sends a numbered list of titles + truncated abstracts and expects a JSON
     array of integer indices back, ordered from most to least relevant.
     Raises on parse failure or wrong type. Silently drops out-of-range indices.
     """
+    if n is None:
+        n = SELECT_N
     # Truncate abstracts here to keep the prompt within the model's context window.
     # Full abstracts are used later in format_digest where summaries are written.
     numbered = "\n\n".join(
@@ -372,6 +378,32 @@ def send_mattermost(body: str) -> None:
 
 def main() -> None:
     """Entry point: fetch, select, format, and deliver the daily arXiv digest."""
+    parser = argparse.ArgumentParser(description="arXiv daily digest bot")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=Path(__file__).parent / "config.yaml",
+        help="Path to config YAML file (default: config.yaml next to this script)",
+    )
+    args = parser.parse_args()
+
+    global CATEGORIES, SELECT_N, MAX_RESULTS, RESEARCHER_PROFILE, OUTPUT_INSTRUCTIONS
+    global LLM_BASE_URL, LLM_MODEL, DELIVERY, EMAIL_SUBJECT, EMAIL_TO, EMAIL_DISPLAY_NAME
+
+    cfg = _load_config(args.config)
+    CATEGORIES = cfg["categories"]
+    SELECT_N = cfg["select_n"]
+    MAX_RESULTS = cfg["max_results"]
+    RESEARCHER_PROFILE = cfg["researcher_profile"].strip()
+    OUTPUT_INSTRUCTIONS = cfg["output_instructions"].strip()
+    LLM_BASE_URL = cfg["llm"]["base_url"]
+    LLM_MODEL = cfg["llm"]["model"]
+    DELIVERY = cfg["delivery"]
+    EMAIL_SUBJECT = cfg["email"]["subject"]
+    EMAIL_TO = cfg["email"]["to"]
+    EMAIL_DISPLAY_NAME = cfg["email"]["display_name"]
+
+    print(f"Using config: {args.config}")
     window_start, window_end = get_submission_window()
     print(f"Submission window: {window_start.isoformat()} → {window_end.isoformat()} ET")
 
