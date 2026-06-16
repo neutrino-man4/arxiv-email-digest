@@ -20,6 +20,9 @@ config.yaml
 # Local model pricing table
 prices.csv
 
+# Usage reporting script (personal/local)
+usage_report.py
+
 # Editor
 .vscode/
 .idea/
