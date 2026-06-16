@@ -457,18 +457,35 @@ def main() -> None:
 
     prices = _load_prices(Path(__file__).parent / "prices.csv")
     total_tokens = prompt_tokens + completion_tokens
+    cost: float | None = None
+    if LLM_MODEL in prices:
+        price_in, price_out = prices[LLM_MODEL]
+        cost = (prompt_tokens * price_in + completion_tokens * price_out) / 1_000_000
+
     token_line = (
         f"Model: {LLM_MODEL} | "
         f"Tokens — prompt: {prompt_tokens}, completion: {completion_tokens}, "
         f"total: {total_tokens}"
     )
-    if LLM_MODEL in prices:
-        price_in, price_out = prices[LLM_MODEL]
-        cost = (prompt_tokens * price_in + completion_tokens * price_out) / 1_000_000
-        token_line += f" | Estimated cost: ${cost:.4f}"
-    else:
-        token_line += " | Cost: model not in prices.csv"
+    token_line += f" | Estimated cost: ${cost:.4f}" if cost is not None else " | Cost: model not in prices.csv"
     print(token_line)
+
+    log_path = (Path(__file__).parent / "logs" / "consumption.csv").resolve()
+    log_path.parent.mkdir(exist_ok=True)
+    write_header = not log_path.exists()
+    now = datetime.now(tz=_ET)
+    with log_path.open("a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["date", "model", "time", "tokens_in", "tokens_out", "estimated_price_dollars"])
+        if write_header:
+            writer.writeheader()
+        writer.writerow({
+            "date": now.strftime("%Y-%m-%d"),
+            "model": LLM_MODEL,
+            "time": now.strftime("%H:%M:%S"),
+            "tokens_in": prompt_tokens,
+            "tokens_out": completion_tokens,
+            "estimated_price_dollars": f"{cost:.4f}" if cost is not None else "",
+        })
 
 
 if __name__ == "__main__":
