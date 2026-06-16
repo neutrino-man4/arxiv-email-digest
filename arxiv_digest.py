@@ -259,7 +259,7 @@ def select_best(papers: list[dict], category: str, n: int | None = None) -> list
         )
 
     valid = [i for i in indices if isinstance(i, int) and 0 <= i < len(papers)]
-    return [papers[i] for i in valid]
+    return [papers[i] for i in valid], completion.usage
 
 
 def format_digest(results: dict[str, list[dict]]) -> str:
@@ -307,7 +307,7 @@ def format_digest(results: dict[str, list[dict]]) -> str:
         max_tokens=8000,
     )
 
-    return (completion.choices[0].message.content or "").strip()
+    return (completion.choices[0].message.content or "").strip(), completion.usage
 
 
 def send_email(subject: str, body: str) -> None:
@@ -409,15 +409,20 @@ def main() -> None:
 
     counts: dict[str, int] = {}
     results: dict[str, list[dict]] = {}
+    prompt_tokens = completion_tokens = 0
     for category in CATEGORIES:
         print(f"Fetching papers for category: {category}")
         papers = fetch_papers(category, window_start, window_end)
         counts[category] = len(papers)
         print(f"  {len(papers)} papers in window")
-        selected = select_best(papers, category)
+        selected, usage = select_best(papers, category)
         results[category] = selected
+        prompt_tokens += usage.prompt_tokens
+        completion_tokens += usage.completion_tokens
 
-    body = format_digest(results)
+    body, usage = format_digest(results)
+    prompt_tokens += usage.prompt_tokens
+    completion_tokens += usage.completion_tokens
 
     lines = ["P.S. In the most recent submission window:"] + [
         f"{cat}: {n} papers" for cat, n in counts.items()
@@ -433,6 +438,12 @@ def main() -> None:
         print("Digest posted to Mattermost.")
     else:
         raise ValueError(f"Unknown delivery method in config: {DELIVERY!r}")
+
+    print(
+        f"Model: {LLM_MODEL} | "
+        f"Tokens — prompt: {prompt_tokens}, completion: {completion_tokens}, "
+        f"total: {prompt_tokens + completion_tokens}"
+    )
 
 
 if __name__ == "__main__":
