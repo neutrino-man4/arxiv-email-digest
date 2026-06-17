@@ -2,5 +2,6 @@ openai
 httpx
 pyyaml
 markdown
+weasyprint
 python-dotenv
 tzdata
