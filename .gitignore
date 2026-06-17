@@ -13,7 +13,7 @@ build/
 # Environment
 .env
 *.env.local
-
+digests/
 # Personal config (use base_config.yaml as the template)
 config.yaml
 
