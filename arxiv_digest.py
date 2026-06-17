@@ -19,12 +19,15 @@ import re
 import smtplib
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import httpx
 import markdown as md
+import weasyprint
 import yaml
 from dotenv import load_dotenv
 from openai import OpenAI
@@ -63,7 +66,11 @@ RESEARCHER_PROFILE: str = ""
 OUTPUT_INSTRUCTIONS: str = ""
 LLM_BASE_URL: str = ""
 LLM_MODEL: str = ""
-DELIVERY: str = ""
+CREATE_PDF: bool = True
+DELIVER_EMAIL: bool = False
+EMAIL_AS_ATTACHMENT: bool = False
+DELIVER_MATTERMOST: bool = False
+MATTERMOST_AS_ATTACHMENT: bool = False
 EMAIL_SUBJECT: str = ""
 EMAIL_TO: str = ""
 EMAIL_DISPLAY_NAME: str = ""
@@ -326,7 +333,18 @@ def format_digest(results: dict[str, list[dict]]) -> str:
     return (completion.choices[0].message.content or "").strip(), completion.usage
 
 
-def send_email(subject: str, body: str) -> None:
+def create_pdf(body: str) -> Path:
+    """Render the Markdown digest body to a PDF and save it under ./digests/."""
+    html = md.markdown(body, extensions=["extra"])
+    out_dir = (Path(__file__).parent / "digests").resolve()
+    out_dir.mkdir(exist_ok=True)
+    pdf_path = out_dir / datetime.now(tz=_ET).strftime("%d-%m-%Y.pdf")
+    weasyprint.HTML(string=html).write_pdf(pdf_path)
+    print(f"PDF saved to {pdf_path}")
+    return pdf_path
+
+
+def send_email(subject: str, body: str, attachment: Path | None = None) -> None:
     """Send the digest email via Gmail SMTP over SSL (port 465).
 
     Both sender and recipient are the configured Gmail address (self-send).
@@ -335,11 +353,25 @@ def send_email(subject: str, body: str) -> None:
     address = os.environ["GMAIL_ADDRESS"]
     password = os.environ["GMAIL_APP_PASSWORD"]
 
-    html = md.markdown(body, extensions=["extra"])
-    msg = MIMEText(html, "html", "utf-8")
-    msg["Subject"] = subject
-    msg["From"] = f"{EMAIL_DISPLAY_NAME} <{address}>"
-    msg["To"] = EMAIL_TO
+    if attachment:
+        msg = MIMEMultipart("mixed")
+        msg["Subject"] = subject
+        msg["From"] = f"{EMAIL_DISPLAY_NAME} <{address}>"
+        msg["To"] = EMAIL_TO
+        msg.attach(MIMEText(
+            "<p>Hi there people, here is your daily digest of interesting papers for today.</p>",
+            "html", "utf-8",
+        ))
+        with attachment.open("rb") as f:
+            pdf_part = MIMEApplication(f.read(), _subtype="pdf")
+        pdf_part.add_header("Content-Disposition", "attachment", filename=attachment.name)
+        msg.attach(pdf_part)
+    else:
+        html = md.markdown(body, extensions=["extra"])
+        msg = MIMEText(html, "html", "utf-8")
+        msg["Subject"] = subject
+        msg["From"] = f"{EMAIL_DISPLAY_NAME} <{address}>"
+        msg["To"] = EMAIL_TO
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(address, password)
@@ -373,13 +405,43 @@ def _chunk_message(text: str) -> list[str]:
     return chunks
 
 
-def send_mattermost(body: str) -> None:
-    """Post the digest to a Mattermost incoming webhook.
+def send_mattermost(body: str, attachment: Path | None = None) -> None:
+    """Post the digest to Mattermost.
 
-    Splits at paragraph boundaries if the body exceeds Mattermost's ~16k
-    character post limit, then posts each chunk sequentially.
+    Without attachment: uses the incoming webhook, splitting long bodies at
+    paragraph boundaries.
+    With attachment: uploads the PDF via the Mattermost REST API and posts a
+    short message with the file attached. Requires MATTERMOST_URL,
+    MATTERMOST_TOKEN, and MATTERMOST_CHANNEL_ID environment variables.
     HTTP errors propagate so GitHub Actions marks the run as failed.
     """
+    if attachment:
+        mm_url = os.environ["MATTERMOST_URL"].rstrip("/")
+        token = os.environ["MATTERMOST_TOKEN"]
+        channel_id = os.environ["MATTERMOST_CHANNEL_ID"]
+        with attachment.open("rb") as f:
+            upload_resp = httpx.post(
+                f"{mm_url}/api/v4/files",
+                headers={"Authorization": f"Bearer {token}"},
+                files={"files": (attachment.name, f, "application/pdf")},
+                data={"channel_id": channel_id},
+                timeout=60,
+            )
+            upload_resp.raise_for_status()
+        file_id = upload_resp.json()["file_infos"][0]["id"]
+        post_resp = httpx.post(
+            f"{mm_url}/api/v4/posts",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "channel_id": channel_id,
+                "message": "Hi there people, here is your daily digest of interesting papers for today.",
+                "file_ids": [file_id],
+            },
+            timeout=30,
+        )
+        post_resp.raise_for_status()
+        return
+
     webhook_url = os.environ["MATTERMOST_WEBHOOK_URL"]
     chunks = _chunk_message(body)
     print(f"--- DIGEST OUTPUT ---\n{body}\n--- END DIGEST OUTPUT ---")
@@ -404,7 +466,10 @@ def main() -> None:
     args = parser.parse_args()
 
     global CATEGORIES, SELECT_N, MAX_RESULTS, RESEARCHER_PROFILE, OUTPUT_INSTRUCTIONS
-    global LLM_BASE_URL, LLM_MODEL, DELIVERY, EMAIL_SUBJECT, EMAIL_TO, EMAIL_DISPLAY_NAME
+    global LLM_BASE_URL, LLM_MODEL
+    global CREATE_PDF
+    global DELIVER_EMAIL, EMAIL_AS_ATTACHMENT, EMAIL_SUBJECT, EMAIL_TO, EMAIL_DISPLAY_NAME
+    global DELIVER_MATTERMOST, MATTERMOST_AS_ATTACHMENT
 
     cfg = _load_config(args.config)
     CATEGORIES = cfg["categories"]
@@ -414,10 +479,21 @@ def main() -> None:
     OUTPUT_INSTRUCTIONS = cfg["output_instructions"].strip()
     LLM_BASE_URL = cfg["llm"]["base_url"]
     LLM_MODEL = cfg["llm"]["model"]
-    DELIVERY = cfg["delivery"]
-    EMAIL_SUBJECT = cfg["email"]["subject"]
-    EMAIL_TO = cfg["email"]["to"]
-    EMAIL_DISPLAY_NAME = cfg["email"]["display_name"]
+    CREATE_PDF = bool(cfg.get("create_pdf", True))
+
+    delivery_cfg = cfg["delivery"]
+
+    mm_cfg = delivery_cfg.get("mattermost", {})
+    DELIVER_MATTERMOST = bool(mm_cfg.get("enabled", False))
+    MATTERMOST_AS_ATTACHMENT = bool(mm_cfg.get("as_attachment", False))
+
+    email_cfg = delivery_cfg.get("email", {})
+    DELIVER_EMAIL = bool(email_cfg.get("enabled", False))
+    EMAIL_AS_ATTACHMENT = bool(email_cfg.get("as_attachment", False))
+    if DELIVER_EMAIL:
+        EMAIL_SUBJECT = email_cfg["subject"]
+        EMAIL_TO = email_cfg["to"]
+        EMAIL_DISPLAY_NAME = email_cfg["display_name"]
 
     print(f"Using config: {args.config}")
     window_start, window_end = get_submission_window()
@@ -445,15 +521,37 @@ def main() -> None:
     ]
     stats_footer = "\n".join(lines)
 
-    if DELIVERY == "email":
-        send_email(EMAIL_SUBJECT, body + "\n\n" + stats_footer)
+    attachment_requested = (
+        (DELIVER_EMAIL and EMAIL_AS_ATTACHMENT)
+        or (DELIVER_MATTERMOST and MATTERMOST_AS_ATTACHMENT)
+    )
+    if attachment_requested and not CREATE_PDF:
+        print("Warning: as_attachment is enabled but create_pdf is false — creating PDF anyway.")
+
+    need_pdf = CREATE_PDF or attachment_requested
+    if not DELIVER_EMAIL and not DELIVER_MATTERMOST and not need_pdf:
+        raise ValueError(
+            "Nothing to do: no delivery method enabled and create_pdf is false. "
+            "Set mattermost.enabled, email.enabled, or create_pdf: true in config."
+        )
+
+    pdf_path: Path | None = None
+    if need_pdf:
+        pdf_path = create_pdf(body + "\n\n" + stats_footer)
+
+    if DELIVER_EMAIL:
+        if EMAIL_AS_ATTACHMENT:
+            send_email(EMAIL_SUBJECT, body, attachment=pdf_path)
+        else:
+            send_email(EMAIL_SUBJECT, body + "\n\n" + stats_footer)
         print("Digest sent via email.")
-    elif DELIVERY == "mattermost":
-        send_mattermost(body)
-        send_mattermost(stats_footer)
+    if DELIVER_MATTERMOST:
+        if MATTERMOST_AS_ATTACHMENT:
+            send_mattermost(body, attachment=pdf_path)
+        else:
+            send_mattermost(body)
+            send_mattermost(stats_footer)
         print("Digest posted to Mattermost.")
-    else:
-        raise ValueError(f"Unknown delivery method in config: {DELIVERY!r}")
 
     prices = _load_prices(Path(__file__).parent / "prices.csv")
     total_tokens = prompt_tokens + completion_tokens
