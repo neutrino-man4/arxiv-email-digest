@@ -97,11 +97,23 @@ llm:
   model: your-model-name                    # e.g. gpt-4o, claude-sonnet-4-6
 
 # -----------------------------------------------------------------------
-# Delivery: "email" or "mattermost"
+# PDF output
 # -----------------------------------------------------------------------
-delivery: mattermost  # change to "email" for Gmail SMTP delivery
 
-email:
-  subject: "[arXiv] Daily Digest"
-  to: you@example.com          # recipient address
-  display_name: "arXiv Bot"    # From: display name
+# Save the digest as a PDF in ./digests/DD-MM-YYYY.pdf after each run.
+create_pdf: true
+
+# -----------------------------------------------------------------------
+# Delivery: enable one or both channels independently
+# -----------------------------------------------------------------------
+delivery:
+  mattermost:
+    enabled: true           # post via Mattermost incoming webhook
+    as_attachment: false    # if true, send as attached PDF instead of inline text
+                            # (requires MATTERMOST_URL, MATTERMOST_TOKEN, MATTERMOST_CHANNEL_ID env vars)
+  email:
+    enabled: false          # send via Gmail SMTP
+    as_attachment: false    # if true, send as attached PDF instead of inline HTML
+    subject: "[arXiv] Daily Digest"
+    to: you@example.com          # recipient address
+    display_name: "arXiv Bot"    # From: display name
