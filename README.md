@@ -1,6 +1,6 @@
 # arXiv Daily Digest
 
-A bot that fetches the day's new arXiv papers, uses an LLM to select and rank the most relevant ones for your research interests, and delivers a personalised digest — either as an HTML email or a Mattermost post.
+A bot that fetches the day's new arXiv papers, uses an LLM to select and rank the most relevant ones for your research interests, and delivers a personalised digest — as an HTML email, a Mattermost post, a saved PDF, or any combination of these.
 
 It can run as a **GitHub Actions** scheduled job (no server required) or as a **local cron job** on any Linux/Mac server.
 
@@ -10,7 +10,7 @@ It can run as a **GitHub Actions** scheduled job (no server required) or as a **
 2. Fetches all papers submitted in that window from each configured category
 3. Calls an LLM to select and rank the most relevant papers, guided by your researcher profile
 4. Calls the LLM a second time to write the digest — with top-pick summaries, clickable links, and formatting of your choice
-5. Delivers via Gmail SMTP or a Mattermost incoming webhook
+5. Delivers via Gmail SMTP, a Mattermost incoming webhook, or saves a PDF locally — or any combination
 6. Logs token consumption to `logs/consumption.csv` for cost tracking
 
 ---
@@ -45,13 +45,24 @@ llm:
   base_url: https://your-llm-endpoint/   # any OpenAI-compatible API
   model: your-model-name
 
-delivery: mattermost   # or "email"
+# Save a PDF to ./digests/DD-MM-YYYY.pdf after each run
+create_pdf: true
 
-email:
-  subject: "[arXiv] Daily Digest"
-  to: you@example.com
-  display_name: "arXiv Bot"
+delivery:
+  mattermost:
+    enabled: true           # post inline via webhook
+    as_attachment: false    # if true, upload PDF via Mattermost API instead
+  email:
+    enabled: false          # send via Gmail SMTP
+    as_attachment: false    # if true, send PDF as email attachment instead
+    subject: "[arXiv] Daily Digest"
+    to: you@example.com
+    display_name: "arXiv Bot"
 ```
+
+Multiple delivery methods can be active simultaneously — set `enabled: true` on as many as you like. If all delivery methods are disabled but `create_pdf: true`, the PDF is still saved locally.
+
+**`as_attachment` mode** sends a short "here is your digest" message with the PDF attached instead of posting the full inline text. For Mattermost, file upload requires the REST API rather than a webhook; set three additional environment variables: `MATTERMOST_URL`, `MATTERMOST_TOKEN` (personal access or bot token), and `MATTERMOST_CHANNEL_ID`.
 
 If you need different configurations (e.g. different researcher groups), keep multiple YAML files and pass the one you want at runtime:
 
@@ -72,8 +83,11 @@ Go to *Settings → Secrets and variables → Actions → New repository secret*
 | Secret | Description |
 |---|---|
 | `KIT_LLM_KEY` | API key for your LLM endpoint |
-| `MATTERMOST_WEBHOOK_URL` | Mattermost incoming webhook URL (if using Mattermost delivery) |
-| `GMAIL_ADDRESS` | Gmail address to send from (if using email delivery) |
+| `MATTERMOST_WEBHOOK_URL` | Mattermost incoming webhook URL (inline Mattermost delivery) |
+| `MATTERMOST_URL` | Mattermost server base URL — e.g. `https://mattermost.example.com` (attachment mode only) |
+| `MATTERMOST_TOKEN` | Mattermost personal access or bot token (attachment mode only) |
+| `MATTERMOST_CHANNEL_ID` | Channel to post to (attachment mode only) |
+| `GMAIL_ADDRESS` | Gmail address to send from (email delivery) |
 | `GMAIL_APP_PASSWORD` | Gmail App Password — see [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) |
 
 ### 3. Commit your config
@@ -111,9 +125,12 @@ Create a `.env` file in the project root (it is gitignored):
 
 ```bash
 KIT_LLM_KEY=your_api_key_here
-MATTERMOST_WEBHOOK_URL=https://your.mattermost.server/hooks/xxx
-GMAIL_ADDRESS=you@gmail.com          # only needed for email delivery
-GMAIL_APP_PASSWORD=your_app_password  # only needed for email delivery
+MATTERMOST_WEBHOOK_URL=https://your.mattermost.server/hooks/xxx   # inline webhook delivery
+MATTERMOST_URL=https://your.mattermost.server                     # attachment mode only
+MATTERMOST_TOKEN=your_bot_or_personal_token                       # attachment mode only
+MATTERMOST_CHANNEL_ID=your_channel_id                             # attachment mode only
+GMAIL_ADDRESS=you@gmail.com           # email delivery only
+GMAIL_APP_PASSWORD=your_app_password  # email delivery only
 ```
 
 ### 3. Test a manual run
@@ -165,10 +182,21 @@ Run `python usage_report.py` at any time to post a weekly summary to Mattermost.
 | Package | Purpose |
 |---|---|
 | `openai` | LLM API client (OpenAI-compatible) |
-| `httpx` | arXiv API and Mattermost webhook requests |
+| `httpx` | arXiv API and Mattermost webhook/API requests |
 | `pyyaml` | Config file parsing |
-| `markdown` | Converts digest Markdown to HTML for email delivery |
+| `markdown` | Converts digest Markdown to HTML for email and PDF rendering |
+| `weasyprint` | Renders HTML to PDF for `create_pdf` and `as_attachment` modes |
 | `python-dotenv` | Loads credentials from `.env` for local runs |
 | `tzdata` | IANA timezone data for portable `zoneinfo` support |
 
 Everything else (`smtplib`, `xml`, `csv`, `json`, `argparse`, etc.) is Python standard library.
+
+`weasyprint` requires system libraries for font and layout rendering. Install them once:
+
+```bash
+# Ubuntu / Debian
+sudo apt install libpango-1.0-0 libpangoft2-1.0-0 libharfbuzz0b
+
+# macOS
+brew install pango
+```
