@@ -1,129 +1,162 @@
-# arXiv Email Digest
+# arXiv Daily Digest
 
-A GitHub Actions bot that fetches recent arXiv papers, uses an LLM to select and rank the most relevant ones for your research, and emails you a personalised daily digest in HTML.
+A bot that fetches the day's new arXiv papers, uses an LLM to select and rank the most relevant ones for your research interests, and delivers a personalised digest — either as an HTML email or a Mattermost post.
+
+It can run as a **GitHub Actions** scheduled job (no server required) or as a **local cron job** on any Linux/Mac server.
 
 ## How it works
 
-1. Fetches the most recent papers from each configured arXiv category via the arXiv API
-2. Calls an LLM to select and rank the most relevant papers per category, guided by your researcher profile
-3. Calls the LLM a second time to write a personalised email — with top-pick summaries, clickable links, and formatting of your choice
-4. Sends the digest as an HTML email from a Gmail account to any address you specify
-
-The digest runs on a daily cron schedule via GitHub Actions. No server required.
+1. Determines the correct arXiv announcement window for the current day (based on arXiv's submission cutoff schedule, all times US Eastern)
+2. Fetches all papers submitted in that window from each configured category
+3. Calls an LLM to select and rank the most relevant papers, guided by your researcher profile
+4. Calls the LLM a second time to write the digest — with top-pick summaries, clickable links, and formatting of your choice
+5. Delivers via Gmail SMTP or a Mattermost incoming webhook
+6. Logs token consumption to `logs/consumption.csv` for cost tracking
 
 ---
 
 ## Configuration
 
-Everything you need to customise lives in `config.yaml`. You never need to touch the Python script.
+Copy `base_config.yaml` to `config.yaml` and fill in your details. `config.yaml` is gitignored so your personal settings stay local.
+
+```bash
+cp base_config.yaml config.yaml
+```
+
+Key fields:
 
 ```yaml
 categories:
-  - hep-ph
+  - hep-ph       # arXiv category IDs — see arxiv.org/category_taxonomy
   - hep-ex
-  - cs.LG
 
-fetch_n: 50       # papers fetched from arXiv per category
-select_n: 10      # papers selected by the LLM per category
-
-user:
-  name: Alice
+select_n: 10     # papers selected by the LLM per category
+max_results: 150 # safety cap on papers fetched per category (set above daily volume)
 
 researcher_profile: |
-  Describe your research interests here. The LLM uses this to decide which
-  papers are most relevant and how to rank them. Be specific — mention topics,
-  methods, and application areas. You can also name preferred authors:
-  "Prioritise papers by John Smith and Jane Doe." To suppress your own papers:
-  "Ignore papers on which I (Alice Example) am a co-author."
+  Describe who the digest is for and what topics they care about.
+  For multiple researchers, list each with their topics separately.
+  Include an AUTHOR BOOST list and a HARD EXCLUSION rule for self-citations.
 
 output_instructions: |
-  Controls how the email is written. Specify tone (formal/informal), structure,
-  summary length, what to emphasise, etc. The output is Markdown rendered to HTML,
-  so you can ask for **bold**, *italics*, and [clickable links](url).
-  Example: "Write informally. Open with a Top Picks section covering the 2 most
-  relevant papers with 3-4 sentence summaries. List the rest by category with
-  title and link only. Close with a casual sign-off."
+  Controls tone, structure, and formatting of the digest body.
 
 llm:
-  base_url: https://your-llm-endpoint/api   # any OpenAI-compatible endpoint
+  base_url: https://your-llm-endpoint/   # any OpenAI-compatible API
   model: your-model-name
+
+delivery: mattermost   # or "email"
 
 email:
   subject: "[arXiv] Daily Digest"
-  to: you@yourinstitution.edu
+  to: you@example.com
+  display_name: "arXiv Bot"
 ```
 
-### arXiv category IDs
+If you need different configurations (e.g. different researcher groups), keep multiple YAML files and pass the one you want at runtime:
 
-Find valid category strings at [arxiv.org/category_taxonomy](https://arxiv.org/category_taxonomy). Examples: `hep-ph`, `hep-ex`, `cs.LG`, `quant-ph`, `astro-ph.HE`.
-
-### LLM endpoint
-
-The bot works with any OpenAI-compatible API — OpenAI, Anthropic (via proxy), local Ollama, or institutional endpoints. Set `llm.base_url` and `llm.model` in `config.yaml`. The API key is kept as a GitHub secret (see Setup below).
+```bash
+python arxiv_digest.py --config my_other_config.yaml
+```
 
 ---
 
-## Setup
+## Option A — GitHub Actions (no server required)
 
 ### 1. Fork or clone this repository
 
-Push it to your own GitHub account.
+### 2. Add repository secrets
 
-### 2. Add GitHub Actions secrets
-
-Go to your repo on GitHub → *Settings → Secrets and variables → Actions → New repository secret* and add:
+Go to *Settings → Secrets and variables → Actions → New repository secret*:
 
 | Secret | Description |
 |---|---|
-| `LLM_API_KEY` | API key for your LLM endpoint |
-| `GMAIL_ADDRESS` | Gmail address the digest is sent *from* |
-| `GMAIL_APP_PASSWORD` | Gmail App Password (see step 3) |
+| `KIT_LLM_KEY` | API key for your LLM endpoint |
+| `MATTERMOST_WEBHOOK_URL` | Mattermost incoming webhook URL (if using Mattermost delivery) |
+| `GMAIL_ADDRESS` | Gmail address to send from (if using email delivery) |
+| `GMAIL_APP_PASSWORD` | Gmail App Password — see [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) |
 
-Then update `.github/workflows/daily.yml` to pass `LLM_API_KEY` instead of `KIT_LLM_KEY` if you renamed it, or keep the name as-is and just set the secret value.
+### 3. Commit your config
 
-### 3. Generate a Gmail App Password
+`config.yaml` is gitignored. Either add it to the repository manually or adjust the workflow to pass it in another way (e.g. via a secret or environment variable).
 
-The bot sends email via Gmail SMTP. It needs an App Password, not your account password.
+### 4. Adjust the schedule
 
-1. Enable 2-Step Verification on your Google account
-2. Go to [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords)
-3. Create a password for "Mail / Other" and copy the 16-character result — that is your `GMAIL_APP_PASSWORD`
-
-The sender and recipient can be different addresses. Set `email.to` in `config.yaml` to wherever you want the digest delivered.
-
-### 4. Set the schedule
-
-The workflow runs at **07:00 UTC** by default. Edit the cron line in `.github/workflows/daily.yml`:
+Edit the cron line in `.github/workflows/daily.yml`. The workflow uses the `Europe/Berlin` timezone:
 
 ```yaml
-- cron: "0 7 * * *"   # runs at 07:00 UTC every day
+- cron: "57 12 * * 1-5"
+  timezone: "Europe/Berlin"
 ```
 
-GitHub Actions cron is always UTC — convert your preferred local time accordingly. For example, 09:30 UTC = 10:30 CET (winter) / 11:30 CEST (summer).
+### 5. Test manually
 
-### 5. Test it manually
-
-Go to your repo → *Actions → arXiv Daily Digest → Run workflow*. This triggers an immediate run using the same job as the cron. Watch the logs to confirm everything works before relying on the schedule.
+Go to *Actions → arXiv Daily Digest → Run workflow* to trigger an immediate run.
 
 ---
 
-## Local testing
+## Option B — Local conda environment + cron
+
+### 1. Create the conda environment
 
 ```bash
+conda create -n arxiv-digest python=3.11
+conda activate arxiv-digest
 pip install -r requirements.txt
+```
 
-export KIT_LLM_KEY=...        # or whatever you named your API key secret
-export GMAIL_ADDRESS=...
-export GMAIL_APP_PASSWORD=...
+### 2. Set up credentials
 
+Create a `.env` file in the project root (it is gitignored):
+
+```bash
+KIT_LLM_KEY=your_api_key_here
+MATTERMOST_WEBHOOK_URL=https://your.mattermost.server/hooks/xxx
+GMAIL_ADDRESS=you@gmail.com          # only needed for email delivery
+GMAIL_APP_PASSWORD=your_app_password  # only needed for email delivery
+```
+
+### 3. Test a manual run
+
+```bash
+conda activate arxiv-digest
 python arxiv_digest.py
 ```
 
-To verify only the LLM connection without sending email, use the included smoke test:
+### 4. Add a crontab entry
 
-```bash
-python test_kit_api.py
+Open your crontab with `crontab -e` and add a line. The example below runs the digest at 09:59 on weekdays and logs output to `logs/cron.log`:
+
 ```
+59 9 * * 1-5 cd /path/to/arxiv-email-digest && /path/to/miniconda/bin/conda run -n arxiv-digest python arxiv_digest.py >> /path/to/arxiv-email-digest/logs/cron.log 2>&1
+```
+
+Replace `/path/to/` with your actual paths. To find your conda binary: `which conda`.
+
+To also run the weekly usage report every Monday at 09:00:
+
+```
+0 9 * * 1 cd /path/to/arxiv-email-digest && /path/to/miniconda/bin/conda run -n arxiv-digest python usage_report.py >> /path/to/arxiv-email-digest/logs/cron.log 2>&1
+```
+
+---
+
+## Token consumption tracking
+
+After each run the script prints a summary and appends a row to `logs/consumption.csv`:
+
+```
+Model: azure.gpt-5-mini | Tokens — prompt: 18432, completion: 2104, total: 20536 | Estimated cost: $0.0098
+```
+
+To add pricing for your model, create a `prices.csv` file (gitignored) in the project root:
+
+```csv
+model,usd_per_mtok_in,usd_per_mtok_out
+your-model-name,0.28,2.20
+```
+
+Run `python usage_report.py` at any time to post a weekly summary to Mattermost.
 
 ---
 
@@ -132,8 +165,10 @@ python test_kit_api.py
 | Package | Purpose |
 |---|---|
 | `openai` | LLM API client (OpenAI-compatible) |
-| `httpx` | arXiv API requests |
-| `pyyaml` | Reading `config.yaml` |
-| `markdown` | Converting LLM output to HTML for the email |
+| `httpx` | arXiv API and Mattermost webhook requests |
+| `pyyaml` | Config file parsing |
+| `markdown` | Converts digest Markdown to HTML for email delivery |
+| `python-dotenv` | Loads credentials from `.env` for local runs |
+| `tzdata` | IANA timezone data for portable `zoneinfo` support |
 
-Everything else (`smtplib`, `xml`, `json`, etc.) is Python standard library.
+Everything else (`smtplib`, `xml`, `csv`, `json`, `argparse`, etc.) is Python standard library.
