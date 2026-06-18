@@ -70,7 +70,6 @@ CREATE_PDF: bool = True
 DELIVER_EMAIL: bool = False
 EMAIL_AS_ATTACHMENT: bool = False
 DELIVER_MATTERMOST: bool = False
-MATTERMOST_AS_ATTACHMENT: bool = False
 EMAIL_SUBJECT: str = ""
 EMAIL_TO: str = ""
 EMAIL_DISPLAY_NAME: str = ""
@@ -405,43 +404,13 @@ def _chunk_message(text: str) -> list[str]:
     return chunks
 
 
-def send_mattermost(body: str, attachment: Path | None = None) -> None:
-    """Post the digest to Mattermost.
+def send_mattermost(body: str) -> None:
+    """Post the digest to Mattermost via the incoming webhook.
 
-    Without attachment: uses the incoming webhook, splitting long bodies at
-    paragraph boundaries.
-    With attachment: uploads the PDF via the Mattermost REST API and posts a
-    short message with the file attached. Requires MATTERMOST_URL,
-    MATTERMOST_TOKEN, and MATTERMOST_CHANNEL_ID environment variables.
-    HTTP errors propagate so GitHub Actions marks the run as failed.
+    Splits long bodies at paragraph boundaries so no chunk exceeds the
+    Mattermost message limit. HTTP errors propagate so GitHub Actions marks
+    the run as failed.
     """
-    if attachment:
-        mm_url = os.environ["MATTERMOST_URL"].rstrip("/")
-        token = os.environ["MATTERMOST_TOKEN"]
-        channel_id = os.environ["MATTERMOST_CHANNEL_ID"]
-        with attachment.open("rb") as f:
-            upload_resp = httpx.post(
-                f"{mm_url}/api/v4/files",
-                headers={"Authorization": f"Bearer {token}"},
-                files={"files": (attachment.name, f, "application/pdf")},
-                data={"channel_id": channel_id},
-                timeout=60,
-            )
-            upload_resp.raise_for_status()
-        file_id = upload_resp.json()["file_infos"][0]["id"]
-        post_resp = httpx.post(
-            f"{mm_url}/api/v4/posts",
-            headers={"Authorization": f"Bearer {token}"},
-            json={
-                "channel_id": channel_id,
-                "message": "Hi there people, here is your daily digest of interesting papers for today.",
-                "file_ids": [file_id],
-            },
-            timeout=30,
-        )
-        post_resp.raise_for_status()
-        return
-
     webhook_url = os.environ["MATTERMOST_WEBHOOK_URL"]
     chunks = _chunk_message(body)
     print(f"--- DIGEST OUTPUT ---\n{body}\n--- END DIGEST OUTPUT ---")
@@ -469,7 +438,7 @@ def main() -> None:
     global LLM_BASE_URL, LLM_MODEL
     global CREATE_PDF
     global DELIVER_EMAIL, EMAIL_AS_ATTACHMENT, EMAIL_SUBJECT, EMAIL_TO, EMAIL_DISPLAY_NAME
-    global DELIVER_MATTERMOST, MATTERMOST_AS_ATTACHMENT
+    global DELIVER_MATTERMOST
 
     cfg = _load_config(args.config)
     CATEGORIES = cfg["categories"]
@@ -485,7 +454,6 @@ def main() -> None:
 
     mm_cfg = delivery_cfg.get("mattermost", {})
     DELIVER_MATTERMOST = bool(mm_cfg.get("enabled", False))
-    MATTERMOST_AS_ATTACHMENT = bool(mm_cfg.get("as_attachment", False))
 
     email_cfg = delivery_cfg.get("email", {})
     DELIVER_EMAIL = bool(email_cfg.get("enabled", False))
@@ -521,10 +489,7 @@ def main() -> None:
     ]
     stats_footer = "\n".join(lines)
 
-    attachment_requested = (
-        (DELIVER_EMAIL and EMAIL_AS_ATTACHMENT)
-        or (DELIVER_MATTERMOST and MATTERMOST_AS_ATTACHMENT)
-    )
+    attachment_requested = DELIVER_EMAIL and EMAIL_AS_ATTACHMENT
     if attachment_requested and not CREATE_PDF:
         print("Warning: as_attachment is enabled but create_pdf is false — creating PDF anyway.")
 
@@ -546,11 +511,8 @@ def main() -> None:
             send_email(EMAIL_SUBJECT, body + "\n\n" + stats_footer)
         print("Digest sent via email.")
     if DELIVER_MATTERMOST:
-        if MATTERMOST_AS_ATTACHMENT:
-            send_mattermost(body, attachment=pdf_path)
-        else:
-            send_mattermost(body)
-            send_mattermost(stats_footer)
+        send_mattermost(body)
+        send_mattermost(stats_footer)
         print("Digest posted to Mattermost.")
 
     prices = _load_prices(Path(__file__).parent / "prices.csv")
