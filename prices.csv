@@ -1,0 +1,8 @@
+model,usd_per_mtok_in,usd_per_mtok_out
+azure.gpt-5,1.38,11.00
+azure.gpt-5-mini,0.28,2.20
+azure.gpt-5-nano,0.06,0.44
+azure.gpt-5.1,1.38,11.00
+azure.gpt-5.4,2.76,16.50
+azure.gpt-5.5,5.50,33.00
+kit.qwen3.5-397b-A17b,0.0,0.0
