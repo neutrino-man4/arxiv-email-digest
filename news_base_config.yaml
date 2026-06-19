@@ -1,0 +1,128 @@
+# News Daily Digest — base configuration
+# Copy this file to news_config.yaml and fill in the fields below.
+# news_config.yaml is gitignored so your personal settings stay local.
+
+# -----------------------------------------------------------------------
+# RSS feed list
+# Path to a plain-text file with one RSS URL per line (# lines ignored).
+# -----------------------------------------------------------------------
+rss_list: rss_links.txt
+
+# -----------------------------------------------------------------------
+# Fetch settings
+# -----------------------------------------------------------------------
+
+# Maximum number of entries to pull per RSS source in each run.
+# Acts as a per-source cap before the time window filter is applied.
+fetch_per_source: 30
+
+# Only consider entries published within this many hours of the run time.
+# 24 for a daily digest; 48 adds a safety buffer if a source was slow to update.
+time_window_hours: 24
+
+# Safety cap on total entries passed to the LLM after time filtering.
+# With 15 sources x 30 entries this could be 450 items; cap keeps token use sane.
+# The LLM sees only the first max_items_to_llm entries (sorted newest-first).
+max_items_to_llm: 80
+
+# Number of stories the LLM selects and summarizes in the digest.
+select_n: 10
+
+# -----------------------------------------------------------------------
+# Reader profile
+# Used by the LLM to decide what counts as noteworthy and for whom.
+# Describe who the digest is for and what kinds of news matter to them.
+# -----------------------------------------------------------------------
+reader_profile: |
+  You are a news triage assistant for [describe the team, e.g.
+  "a machine learning research group working on HEP applications"].
+  Given a news article's title, source, and snippet, decide whether it is
+  worth their attention and assign a relevance score from 0 to 10.
+
+  PRIORITIZE (assign high relevance) stories on the following signals:
+
+  - New model releases or major capability announcements from frontier AI labs
+    (OpenAI, Anthropic, Google DeepMind, Meta AI, Mistral, etc.)
+  - Significant research results that do not appear on arXiv (industry-only
+    publications, technical blog posts, benchmarks, evals)
+  - Strategic moves likely to reshape the AI landscape: funding rounds above
+    $500M, major acquisitions, lab spin-outs, key hires
+  - Regulatory or policy decisions directly affecting AI development or deployment
+  - Infrastructure and compute news (chips, data centers, energy) that affects
+    the pace of AI progress
+
+  Reader: [Name 1]
+  - [Topic A, e.g. LLM reasoning and planning]
+  - [Topic B]
+
+  Reader: [Name 2]
+  - [Topic C]
+  - [Topic D]
+
+  DEPRIORITIZE: opinion pieces without new information, incremental product
+  updates (new UI features, pricing tweaks), and duplicate coverage of the
+  same story from multiple outlets (pick the most informative source).
+
+  Score on disruption potential and relevance first. Judge only on the
+  provided title and snippet; do not infer content that is not stated.
+
+# -----------------------------------------------------------------------
+# Output instructions
+# Controls the tone, structure, and formatting of the digest body.
+# -----------------------------------------------------------------------
+output_instructions: |
+  Write as a well-informed colleague sharing a curated news briefing:
+  first person, friendly but professional. Begin with a short generic
+  plural greeting such as "Hey there", "Hello folks", or similar.
+
+  Summaries should be non-technical and awareness-focused: explain what
+  happened, why it matters, and what to watch for next. Avoid jargon.
+  Use the reader's name to flag their attention where relevant.
+
+  TOP STORIES:
+  Select up to [N] of the most noteworthy items. For each, write 3-4
+  sentences: what happened, who it involves, and why it could be
+  significant. Group thematically if several stories are related.
+  If fewer than [N] items score above 0, cover only those that exist.
+
+  ALSO WORTH NOTING:
+  List remaining selected items as a short bulleted list with one-line
+  descriptions. Omit source attribution unless it adds context.
+
+  Close with a one-line sign-off.
+
+  FORMATTING:
+  - Output Markdown compatible with Mattermost webhooks.
+  - Bold (**...**) for company names, product names, and key terms.
+  - Clickable links as [title](url) where a source URL is available.
+  - Blank lines between sections.
+  - ASCII only. No emojis, no em dashes, no Unicode special characters.
+
+# -----------------------------------------------------------------------
+# LLM backend (OpenAI-compatible API)
+# -----------------------------------------------------------------------
+llm:
+  base_url: https://your-llm-api-endpoint/  # e.g. https://api.openai.com/v1
+  model: your-model-name                    # e.g. gpt-4o, claude-sonnet-4-6
+
+# -----------------------------------------------------------------------
+# PDF output
+# -----------------------------------------------------------------------
+
+# Save the digest as a PDF in ./digests/news-DD-MM-YYYY.pdf after each run.
+create_pdf: true
+
+# -----------------------------------------------------------------------
+# Delivery: enable one or both channels independently
+# -----------------------------------------------------------------------
+delivery:
+  mattermost:
+    enabled: true
+    as_attachment: false
+                            # (requires MATTERMOST_URL, MATTERMOST_TOKEN, MATTERMOST_CHANNEL_ID env vars)
+  email:
+    enabled: false
+    as_attachment: false
+    subject: "[News] Daily Digest"
+    to: you@example.com
+    display_name: "News Bot"
