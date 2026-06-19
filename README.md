@@ -1,10 +1,15 @@
-# arXiv Daily Digest
+# arXiv & News Daily Digest
 
-A bot that fetches the day's new arXiv papers, uses an LLM to select and rank the most relevant ones for your research interests, and delivers a personalised digest — as an HTML email, a Mattermost post, a saved PDF, or any combination of these.
+Two companion bots for daily research awareness:
 
-It can run as a **GitHub Actions** scheduled job (no server required) or as a **local cron job** on any Linux/Mac server.
+- **`arxiv_digest.py`** — fetches the day's new arXiv papers, uses an LLM to select and rank the most relevant ones for your research interests, and delivers a personalised digest.
+- **`news_digest.py`** — fetches recent entries from a curated list of RSS feeds (company blogs, tech outlets, newsletters), scores and deduplicates them with an LLM, and delivers a structured news briefing focused on disruptive AI/ML developments.
 
-## How it works
+Both bots deliver via HTML email, Mattermost webhook, saved PDF, or any combination, and can run as a **GitHub Actions** scheduled job (no server required) or as a **local cron job** on any Linux/Mac server.
+
+---
+
+## arXiv Digest — how it works
 
 1. Determines the correct arXiv announcement window for the current day (based on arXiv's submission cutoff schedule, all times US Eastern)
 2. Fetches all papers submitted in that window from each configured category
@@ -68,6 +73,56 @@ If you need different configurations (e.g. different researcher groups), keep mu
 
 ```bash
 python arxiv_digest.py --config my_other_config.yaml
+```
+
+---
+
+## News Digest — how it works
+
+1. Loads RSS feed URLs from `rss_links.txt` (one URL per line, `#` lines ignored)
+2. Fetches up to `fetch_per_source` entries per feed and keeps only those published within the configured `time_window_hours`
+3. Caps the total entries sent to the LLM at `max_items_to_llm` (sorted newest-first)
+4. **LLM call 1 — triage:** deduplicates stories that cover the same event (keeping the most informative source) and scores each surviving entry 0–10 on disruption potential and cross-domain applicability
+5. **LLM call 2 — format:** writes the digest in three sections — Breakthroughs (9–10), Notable Developments (7–8), Also Worth Noting (5–6) — with per-section caps
+6. Delivers and logs exactly like the arXiv digest
+
+### Configuration
+
+Copy `news_base_config.yaml` to `news_config.yaml` (gitignored) and fill in your details:
+
+```bash
+cp news_base_config.yaml news_config.yaml
+```
+
+Key fields (in addition to the shared `llm`, `create_pdf`, and `delivery` fields):
+
+```yaml
+rss_list: rss_links.txt   # path to the feed URL list (relative to the config file)
+
+fetch_per_source: 30       # max entries pulled per feed per run
+time_window_hours: 48      # only consider entries published within this window
+max_items_to_llm: 80       # safety cap on entries passed to the LLM after time filtering
+select_n: 10               # total stories in the digest (3 breakthroughs + 3 notable + 4 briefly)
+
+reader_profile: |
+  Describe what kinds of news matter and for whom. The profile drives both the
+  deduplication/scoring pass and the final digest writing. See news_base_config.yaml
+  for the full scoring rubric and domain list.
+
+output_instructions: |
+  Controls tone and section structure. The base config includes ready-to-use
+  instructions with per-section caps and formatting rules.
+
+filename_suffix: NEWS      # PDF saved as DD-MM-YYYY-NEWS.pdf
+```
+
+The feed list is in `rss_links.txt`. Edit it to add or remove sources — one URL per line, `#` for comments. The default list covers major AI lab blogs (OpenAI, DeepMind, Hugging Face, Apple ML, Microsoft Research, NVIDIA), tech outlets (VentureBeat, TechCrunch, MIT Tech Review, Ars Technica, IEEE Spectrum), and newsletters (Import AI, The Gradient, Synced Review).
+
+To run the news digest:
+
+```bash
+python news_digest.py                            # uses news_config.yaml by default
+python news_digest.py --config my_config.yaml   # custom config path
 ```
 
 ---
@@ -179,15 +234,16 @@ Run `python usage_report.py` at any time to post a weekly summary to Mattermost.
 
 ## Dependencies
 
-| Package | Purpose |
-|---|---|
-| `openai` | LLM API client (OpenAI-compatible) |
-| `httpx` | arXiv API and Mattermost webhook/API requests |
-| `pyyaml` | Config file parsing |
-| `markdown` | Converts digest Markdown to HTML for email and PDF rendering |
-| `weasyprint` | Renders HTML to PDF for `create_pdf` and `as_attachment` modes |
-| `python-dotenv` | Loads credentials from `.env` for local runs |
-| `tzdata` | IANA timezone data for portable `zoneinfo` support |
+| Package | Used by | Purpose |
+|---|---|---|
+| `openai` | both | LLM API client (OpenAI-compatible) |
+| `httpx` | both | arXiv API and Mattermost webhook/API requests |
+| `feedparser` | news digest | RSS/Atom feed fetching and parsing |
+| `pyyaml` | both | Config file parsing |
+| `markdown` | both | Converts digest Markdown to HTML for email and PDF rendering |
+| `weasyprint` | both | Renders HTML to PDF for `create_pdf` and `as_attachment` modes |
+| `python-dotenv` | both | Loads credentials from `.env` for local runs |
+| `tzdata` | arXiv digest | IANA timezone data for portable `zoneinfo` support |
 
 Everything else (`smtplib`, `xml`, `csv`, `json`, `argparse`, etc.) is Python standard library.
 
