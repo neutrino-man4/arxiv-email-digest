@@ -1,0 +1,18 @@
+# Company primary sources
+https://openai.com/blog/rss.xml
+https://newsroom.ibm.com/press-releases-artificial-intelligence?pagetemplate=rss
+https://deepmind.google/blog/rss.xml
+https://huggingface.co/blog/feed.xml
+https://machinelearning.apple.com/rss.xml
+https://www.microsoft.com/en-us/research/blog/feed/
+https://blogs.nvidia.com/blog/category/generative-ai/feed/
+# Tech news outlets
+https://venturebeat.com/category/ai/feed/
+https://techcrunch.com/category/artificial-intelligence/feed/
+https://www.technologyreview.com/topic/artificial-intelligence/feed/
+https://arstechnica.com/information-technology/feed/
+https://spectrum.ieee.org/feeds/topic/artificial-intelligence.rss
+# Newsletters / curated
+https://importai.substack.com/feed
+https://thegradient.pub/rss/
+https://syncedreview.com/feed/
