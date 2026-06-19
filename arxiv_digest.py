@@ -67,6 +67,7 @@ OUTPUT_INSTRUCTIONS: str = ""
 LLM_BASE_URL: str = ""
 LLM_MODEL: str = ""
 CREATE_PDF: bool = True
+FILENAME_SUFFIX: str | None = None
 DELIVER_EMAIL: bool = False
 EMAIL_AS_ATTACHMENT: bool = False
 DELIVER_MATTERMOST: bool = False
@@ -337,7 +338,9 @@ def create_pdf(body: str) -> Path:
     html = md.markdown(body, extensions=["extra"])
     out_dir = (Path(__file__).parent / "digests").resolve()
     out_dir.mkdir(exist_ok=True)
-    pdf_path = out_dir / datetime.now(tz=_ET).strftime("%d-%m-%Y.pdf")
+    date_str = datetime.now(tz=_ET).strftime("%d-%m-%Y")
+    filename = f"{date_str}-{FILENAME_SUFFIX}.pdf" if FILENAME_SUFFIX else f"{date_str}.pdf"
+    pdf_path = out_dir / filename
     weasyprint.HTML(string=html).write_pdf(pdf_path)
     print(f"PDF saved to {pdf_path}")
     return pdf_path
@@ -436,7 +439,7 @@ def main() -> None:
 
     global CATEGORIES, SELECT_N, MAX_RESULTS, RESEARCHER_PROFILE, OUTPUT_INSTRUCTIONS
     global LLM_BASE_URL, LLM_MODEL
-    global CREATE_PDF
+    global CREATE_PDF, FILENAME_SUFFIX
     global DELIVER_EMAIL, EMAIL_AS_ATTACHMENT, EMAIL_SUBJECT, EMAIL_TO, EMAIL_DISPLAY_NAME
     global DELIVER_MATTERMOST
 
@@ -449,6 +452,7 @@ def main() -> None:
     LLM_BASE_URL = cfg["llm"]["base_url"]
     LLM_MODEL = cfg["llm"]["model"]
     CREATE_PDF = bool(cfg.get("create_pdf", True))
+    FILENAME_SUFFIX = cfg.get("filename_suffix") or None
 
     delivery_cfg = cfg["delivery"]
 
