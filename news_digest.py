@@ -294,8 +294,8 @@ def format_digest(entries: list[dict]) -> tuple[str, object]:
 def create_pdf(body: str) -> Path:
     """Render the Markdown digest body to a PDF and save it under ./digests/."""
     html_body = md.markdown(body, extensions=["extra"])
-    out_dir = (Path(__file__).parent / "digests").resolve()
-    out_dir.mkdir(exist_ok=True)
+    out_dir = Path("/web/abal/public_html/plots/my-digests")
+    out_dir.mkdir(parents=True, exist_ok=True)
     date_str = datetime.now(timezone.utc).strftime("%d-%m-%Y")
     filename = f"{date_str}-{FILENAME_SUFFIX}.pdf" if FILENAME_SUFFIX else f"{date_str}.pdf"
     pdf_path = out_dir / filename
