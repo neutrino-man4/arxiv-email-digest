@@ -472,14 +472,30 @@ def main() -> None:
     print(f"Submission window: {window_start.isoformat()} → {window_end.isoformat()} ET")
 
     counts: dict[str, int] = {}
-    results: dict[str, list[dict]] = {}
-    prompt_tokens = completion_tokens = 0
+    all_papers: dict[str, list[dict]] = {}
     for category in CATEGORIES:
         print(f"Fetching papers for category: {category}")
         papers = fetch_papers(category, window_start, window_end)
         counts[category] = len(papers)
+        all_papers[category] = papers
         print(f"  {len(papers)} papers in window")
-        selected, usage = select_best(papers, category)
+
+    if sum(counts.values()) == 0:
+        fmt = "%Y-%m-%d %H:%M %Z"
+        cat_list = ", ".join(CATEGORIES)
+        msg = (
+            f"No papers found across all categories [{cat_list}] in the time window "
+            f"{window_start.strftime(fmt)} to {window_end.strftime(fmt)}. "
+            "Perhaps it's a holiday at arXiv today?"
+        )
+        print(msg)
+        send_mattermost(msg)
+        return
+
+    results: dict[str, list[dict]] = {}
+    prompt_tokens = completion_tokens = 0
+    for category in CATEGORIES:
+        selected, usage = select_best(all_papers[category], category)
         results[category] = selected
         prompt_tokens += usage.prompt_tokens
         completion_tokens += usage.completion_tokens
