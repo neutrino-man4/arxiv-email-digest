@@ -71,6 +71,7 @@ READER_PROFILE: str = ""
 OUTPUT_INSTRUCTIONS: str = ""
 LLM_BASE_URL: str = ""
 LLM_MODEL: str = ""
+IS_OPENROUTER: bool = False
 CREATE_PDF: bool = True
 FILENAME_SUFFIX: str | None = None
 DELIVER_EMAIL: bool = False
@@ -86,7 +87,7 @@ EMAIL_DISPLAY_NAME: str = ""
 
 
 def _llm_client() -> OpenAI:
-    return OpenAI(api_key=os.environ["KIT_LLM_KEY"], base_url=LLM_BASE_URL)
+    return OpenAI(api_key=os.environ["LLM_API_KEY"], base_url=LLM_BASE_URL)
 
 
 def _load_rss_links(path: Path) -> list[str]:
@@ -214,6 +215,7 @@ def triage_entries(entries: list[dict]) -> tuple[list[dict], object]:
         ],
         temperature=0.0,
         max_tokens=4096,
+        extra_body={"usage": {"include": True}} if IS_OPENROUTER else {},
     )
 
     raw = (completion.choices[0].message.content or "").strip()
@@ -286,6 +288,7 @@ def format_digest(entries: list[dict]) -> tuple[str, object]:
         ],
         temperature=0.3,
         max_tokens=8000,
+        extra_body={"usage": {"include": True}} if IS_OPENROUTER else {},
     )
 
     return (completion.choices[0].message.content or "").strip(), completion.usage
@@ -387,7 +390,7 @@ def main() -> None:
     args = parser.parse_args()
 
     global RSS_LIST_PATH, FETCH_PER_SOURCE, TIME_WINDOW_HOURS, MAX_ITEMS_TO_LLM, SELECT_N
-    global READER_PROFILE, OUTPUT_INSTRUCTIONS, LLM_BASE_URL, LLM_MODEL
+    global READER_PROFILE, OUTPUT_INSTRUCTIONS, LLM_BASE_URL, LLM_MODEL, IS_OPENROUTER
     global CREATE_PDF, FILENAME_SUFFIX
     global DELIVER_EMAIL, EMAIL_AS_ATTACHMENT, EMAIL_SUBJECT, EMAIL_TO, EMAIL_DISPLAY_NAME
     global DELIVER_MATTERMOST
@@ -407,6 +410,7 @@ def main() -> None:
     OUTPUT_INSTRUCTIONS = cfg["output_instructions"].strip()
     LLM_BASE_URL = cfg["llm"]["base_url"]
     LLM_MODEL = cfg["llm"]["model"]
+    IS_OPENROUTER = "openrouter" in LLM_BASE_URL.lower()
     CREATE_PDF = bool(cfg.get("create_pdf", True))
     FILENAME_SUFFIX = cfg.get("filename_suffix") or None
 
@@ -475,17 +479,23 @@ def main() -> None:
         print("Digest posted to Mattermost.")
 
     prompt_tokens = completion_tokens = 0
+    openrouter_cost = 0.0
     for usage in (triage_usage, format_usage):
         if usage:
             prompt_tokens += usage.prompt_tokens
             completion_tokens += usage.completion_tokens
+            if IS_OPENROUTER:
+                openrouter_cost += getattr(usage, "cost", 0.0) or 0.0
 
-    prices = _load_prices(Path(__file__).parent / "prices.csv")
     total_tokens = prompt_tokens + completion_tokens
     cost: float | None = None
-    if LLM_MODEL in prices:
-        price_in, price_out = prices[LLM_MODEL]
-        cost = (prompt_tokens * price_in + completion_tokens * price_out) / 1_000_000
+    if IS_OPENROUTER:
+        cost = openrouter_cost
+    else:
+        prices = _load_prices(Path(__file__).parent / "prices.csv")
+        if LLM_MODEL in prices:
+            price_in, price_out = prices[LLM_MODEL]
+            cost = (prompt_tokens * price_in + completion_tokens * price_out) / 1_000_000
 
     token_line = (
         f"Model: {LLM_MODEL} | "
