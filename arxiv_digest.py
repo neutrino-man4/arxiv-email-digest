@@ -66,6 +66,7 @@ RESEARCHER_PROFILE: str = ""
 OUTPUT_INSTRUCTIONS: str = ""
 LLM_BASE_URL: str = ""
 LLM_MODEL: str = ""
+IS_OPENROUTER: bool = False
 CREATE_PDF: bool = True
 FILENAME_SUFFIX: str | None = None
 DELIVER_EMAIL: bool = False
@@ -147,7 +148,7 @@ def get_submission_window() -> tuple[datetime, datetime]:
 
 def _llm_client() -> OpenAI:
     return OpenAI(
-        api_key=os.environ["KIT_LLM_KEY"],
+        api_key=os.environ["LLM_API_KEY"],
         base_url=LLM_BASE_URL,
     )
 
@@ -257,6 +258,7 @@ def select_best(papers: list[dict], category: str, n: int | None = None) -> list
         ],
         temperature=0.0,
         max_tokens=32768,
+        extra_body={"usage": {"include": True}} if IS_OPENROUTER else {},
     )
 
     raw = (completion.choices[0].message.content or "").strip()
@@ -328,6 +330,7 @@ def format_digest(results: dict[str, list[dict]]) -> str:
         ],
         temperature=0.3,
         max_tokens=8000,
+        extra_body={"usage": {"include": True}} if IS_OPENROUTER else {},
     )
 
     return (completion.choices[0].message.content or "").strip(), completion.usage
@@ -438,7 +441,7 @@ def main() -> None:
     args = parser.parse_args()
 
     global CATEGORIES, SELECT_N, MAX_RESULTS, RESEARCHER_PROFILE, OUTPUT_INSTRUCTIONS
-    global LLM_BASE_URL, LLM_MODEL
+    global LLM_BASE_URL, LLM_MODEL, IS_OPENROUTER
     global CREATE_PDF, FILENAME_SUFFIX
     global DELIVER_EMAIL, EMAIL_AS_ATTACHMENT, EMAIL_SUBJECT, EMAIL_TO, EMAIL_DISPLAY_NAME
     global DELIVER_MATTERMOST
@@ -451,6 +454,7 @@ def main() -> None:
     OUTPUT_INSTRUCTIONS = cfg["output_instructions"].strip()
     LLM_BASE_URL = cfg["llm"]["base_url"]
     LLM_MODEL = cfg["llm"]["model"]
+    IS_OPENROUTER = "openrouter" in LLM_BASE_URL.lower()
     CREATE_PDF = bool(cfg.get("create_pdf", True))
     FILENAME_SUFFIX = cfg.get("filename_suffix") or None
 
@@ -494,15 +498,20 @@ def main() -> None:
 
     results: dict[str, list[dict]] = {}
     prompt_tokens = completion_tokens = 0
+    openrouter_cost = 0.0
     for category in CATEGORIES:
         selected, usage = select_best(all_papers[category], category)
         results[category] = selected
         prompt_tokens += usage.prompt_tokens
         completion_tokens += usage.completion_tokens
+        if IS_OPENROUTER:
+            openrouter_cost += getattr(usage, "cost", 0.0) or 0.0
 
     body, usage = format_digest(results)
     prompt_tokens += usage.prompt_tokens
     completion_tokens += usage.completion_tokens
+    if IS_OPENROUTER:
+        openrouter_cost += getattr(usage, "cost", 0.0) or 0.0
 
     lines = ["P.S. In the most recent submission window:"] + [
         f"{cat}: {n} papers" for cat, n in counts.items()
@@ -535,12 +544,15 @@ def main() -> None:
         send_mattermost(stats_footer)
         print("Digest posted to Mattermost.")
 
-    prices = _load_prices(Path(__file__).parent / "prices.csv")
     total_tokens = prompt_tokens + completion_tokens
     cost: float | None = None
-    if LLM_MODEL in prices:
-        price_in, price_out = prices[LLM_MODEL]
-        cost = (prompt_tokens * price_in + completion_tokens * price_out) / 1_000_000
+    if IS_OPENROUTER:
+        cost = openrouter_cost
+    else:
+        prices = _load_prices(Path(__file__).parent / "prices.csv")
+        if LLM_MODEL in prices:
+            price_in, price_out = prices[LLM_MODEL]
+            cost = (prompt_tokens * price_in + completion_tokens * price_out) / 1_000_000
 
     token_line = (
         f"Model: {LLM_MODEL} | "
